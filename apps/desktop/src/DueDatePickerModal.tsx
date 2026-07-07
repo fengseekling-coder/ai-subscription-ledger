@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CalendarPicker } from "./CalendarPicker";
 
 export function DueDatePickerModal({
   plan,
@@ -43,14 +44,8 @@ export function DueDatePickerModal({
           </p>
           <div className="form-field">
             <label>续费日</label>
-            <input
-              type="date"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              autoFocus
-            />
+            <CalendarPicker value={value} onChange={setValue} />
           </div>
-          <p className="catalog-hint">也可手动输入 YYYY-MM-DD，在表格日期栏里改。</p>
           <div className="modal__foot">
             <button type="button" onClick={onCancel}>
               取消

@@ -4,7 +4,6 @@ export * from "./dates.js";
 export * from "./money.js";
 export * from "./normalize.js";
 export * from "./rules.js";
-export * from "./migrate.js";
 export * from "./stats.js";
 export * from "./actions.js";
 export * from "./load.js";

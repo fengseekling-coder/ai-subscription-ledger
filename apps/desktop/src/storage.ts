@@ -1,5 +1,5 @@
 import type { AppState } from "@ai-sub/core";
-import { loadFromJson, normalizePersistedState } from "@ai-sub/core";
+import { loadFromJson } from "@ai-sub/core";
 import { invoke } from "@tauri-apps/api/core";
 
 type Dto = { budget: number; rows: unknown[]; bills: unknown[] };
@@ -13,9 +13,7 @@ function toDto(state: AppState): Dto {
 }
 
 function fromDto(dto: Dto): AppState {
-  return normalizePersistedState(
-    loadFromJson({ budget: dto.budget, rows: dto.rows, bills: dto.bills })
-  );
+  return loadFromJson({ budget: dto.budget, rows: dto.rows, bills: dto.bills });
 }
 
 export async function loadAppState(): Promise<AppState> {

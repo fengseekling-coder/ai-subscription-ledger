@@ -51,8 +51,10 @@ export default function App() {
   const [listQuery, setListQuery] = useState("");
   const [duePickIndex, setDuePickIndex] = useState<number | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stateRef = useRef<AppState | null>(null);
   const [notifyOn, setNotifyOn] = useState(localStorage.getItem("ai-sub-notify") === "on");
   const [isLoading, setIsLoading] = useState(true);
+  stateRef.current = state;
 
   const showNotice = useCallback((text: string, danger = false) => {
     setNotice({ text, danger });
@@ -92,18 +94,19 @@ export default function App() {
   useEffect(() => {
     const w = getCurrentWindow();
     const unlisten = w.onCloseRequested(async (e) => {
-      if (saveTimer.current && state) {
+      const current = stateRef.current;
+      if (saveTimer.current && current) {
         e.preventDefault();
         clearTimeout(saveTimer.current);
         saveTimer.current = null;
-        await persistAppState(state);
+        await persistAppState(current);
         await w.destroy();
       }
     });
     return () => {
       void unlisten.then((fn) => fn());
     };
-  }, [state]);
+  }, []);
 
   const summary = useMemo(() => (state ? computeSummary(state) : null), [state]);
   const pending = useMemo(() => (state ? pendingRenewItems(state.rows) : []), [state]);

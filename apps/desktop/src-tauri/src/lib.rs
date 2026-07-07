@@ -1,4 +1,5 @@
 mod db;
+mod ocr;
 
 use db::{load_state, save_state, AppStateDto};
 use tauri::{
@@ -15,6 +16,11 @@ fn get_app_state(app: tauri::AppHandle) -> Result<AppStateDto, String> {
 #[tauri::command]
 fn set_app_state(app: tauri::AppHandle, state: AppStateDto) -> Result<(), String> {
     save_state(&app, &state).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn ocr_image(data: Vec<u8>, width: u32, height: u32) -> Result<String, String> {
+    ocr::ocr_image_rgba(&data, width as usize, height as usize)
 }
 
 #[tauri::command]
@@ -53,6 +59,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let pending_title = "暂无待续费";
             let nearest = "下一续费：—";
@@ -104,7 +111,12 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_app_state, set_app_state, update_tray_menu])
+        .invoke_handler(tauri::generate_handler![
+            get_app_state,
+            set_app_state,
+            ocr_image,
+            update_tray_menu
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

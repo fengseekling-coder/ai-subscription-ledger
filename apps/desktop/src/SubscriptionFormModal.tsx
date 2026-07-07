@@ -8,7 +8,10 @@ import {
   type AppState,
   type SubscriptionRow,
 } from "@ai-sub/core";
+import { invoke } from "@tauri-apps/api/core";
+import { readImage } from "@tauri-apps/plugin-clipboard-manager";
 import { useEffect, useRef, useState } from "react";
+import { CalendarPicker } from "./CalendarPicker";
 
 export type SubscriptionFormDraft = {
   category: string;
@@ -94,6 +97,40 @@ export function SubscriptionFormModal({
   const formRef = useRef<HTMLFormElement>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [subDate, setSubDate] = useState(draft.subscribedAt);
+  const [dueDate, setDueDate] = useState(draft.dueDate);
+  /** "sub" | "due" | null — tracks which calendar picker is currently open */
+  const [pickerOpen, setPickerOpen] = useState<"sub" | "due" | null>(null);
+
+  const handlePasteImage = async () => {
+    try {
+      setOcrLoading(true);
+      const img = await readImage();
+      const [size, rgba] = await Promise.all([img.size(), img.rgba()]);
+      if (size.width === 0 || size.height === 0) {
+        onNotice("剪贴板无图片", true);
+        return;
+      }
+      // 把 RGBA 数据转成 PNG 传给 Rust OCR
+      const result = await invoke<string>("ocr_image", {
+        data: Array.from(rgba),
+        width: size.width,
+        height: size.height,
+      });
+      if (result) {
+        setPasteText(result);
+        onNotice("已识别图片文字，请点击解析填充");
+      } else {
+        onNotice("未识别到文字", true);
+      }
+    } catch (e) {
+      console.error("OCR error:", e);
+      onNotice("图片识别失败", true);
+    } finally {
+      setOcrLoading(false);
+    }
+  };
 
   useEffect(() => {
     const prevOverflow = document.body.style.overflow;
@@ -221,9 +258,19 @@ export function SubscriptionFormModal({
                     value={pasteText}
                     onChange={(e) => setPasteText(e.target.value)}
                   />
-                  <button type="button" className="paste-quickfill__btn" onClick={applyPaste}>
-                    解析并填充
-                  </button>
+                  <div className="paste-quickfill__actions">
+                    <button type="button" className="paste-quickfill__btn" onClick={applyPaste}>
+                      解析文字
+                    </button>
+                    <button
+                      type="button"
+                      className="paste-quickfill__btn paste-quickfill__btn--secondary"
+                      onClick={handlePasteImage}
+                      disabled={ocrLoading}
+                    >
+                      {ocrLoading ? "识别中…" : "📷 粘贴图片 OCR"}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -250,16 +297,23 @@ export function SubscriptionFormModal({
           <div className="form-row">
             <div className="form-field">
               <label>订阅日期</label>
-              <input
-                type="date"
-                name="subscribedAt"
-                defaultValue={draft.subscribedAt}
-                autoComplete="off"
+              <input type="hidden" name="subscribedAt" value={subDate} />
+              <CalendarPicker
+                value={subDate}
+                onChange={setSubDate}
+                isOpen={pickerOpen === "sub"}
+                onOpen={() => setPickerOpen("sub")}
               />
             </div>
             <div className="form-field">
               <label>续费日期</label>
-              <input type="date" name="dueDate" defaultValue={draft.dueDate} autoComplete="off" />
+              <input type="hidden" name="dueDate" value={dueDate} />
+              <CalendarPicker
+                value={dueDate}
+                onChange={setDueDate}
+                isOpen={pickerOpen === "due"}
+                onOpen={() => setPickerOpen("due")}
+              />
             </div>
           </div>
           <div className="form-field">
