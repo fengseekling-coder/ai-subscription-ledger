@@ -93,6 +93,8 @@ button, .file-label {
 button:hover, .file-label:hover { border-color: var(--gold); color: var(--text); }
 button.primary { background: var(--text); border-color: var(--text); color: #fffcf8; }
 button.primary:hover { background: #2a2a2a; border-color: #2a2a2a; }
+button.is-on { border-color: var(--ok); color: var(--ok); }
+button.is-on:hover { border-color: var(--ok); color: var(--ok); }
 .file-label input { display: none; }
 
 .main {
