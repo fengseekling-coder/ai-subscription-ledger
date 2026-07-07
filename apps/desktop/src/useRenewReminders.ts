@@ -35,20 +35,27 @@ export function useRenewReminders(
     return () => clearInterval(t);
   }, [state, checkReminders]);
 
-  const requestNotify = useCallback(
-    async (setNotifyOn: (on: boolean) => void) => {
-      const granted = (await requestPermission()) === "granted";
-      if (granted) {
+  const toggleNotify = useCallback(
+    async (on: boolean, setNotifyOn: (v: boolean) => void) => {
+      if (on) {
+        let granted = await isPermissionGranted();
+        if (!granted) granted = (await requestPermission()) === "granted";
+        if (!granted) {
+          showNotice("未授权通知，仍可在应用内看到提醒。");
+          return;
+        }
         localStorage.setItem("ai-sub-notify", "on");
         setNotifyOn(true);
-        showNotice("已开启通知。打开应用时会检查 3 天内续费。");
+        showNotice("已开启续费提醒。打开应用时会检查 3 天内续费。");
         await checkReminders(true);
-        return;
+      } else {
+        localStorage.setItem("ai-sub-notify", "off");
+        setNotifyOn(false);
+        showNotice("已关闭续费提醒。");
       }
-      showNotice("未授权通知，仍可在应用内看到提醒。");
     },
     [checkReminders, showNotice]
   );
 
-  return { requestNotify };
+  return { toggleNotify };
 }

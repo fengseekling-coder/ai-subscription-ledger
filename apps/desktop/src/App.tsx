@@ -127,7 +127,7 @@ export default function App() {
   );
   const isEmptyLedger = Boolean(state && state.rows.length === 0 && state.bills.length === 0);
 
-  const { requestNotify } = useRenewReminders(state, notifyOn, showNotice);
+  const { toggleNotify } = useRenewReminders(state, notifyOn, showNotice);
 
   const subHandlers = useMemo(
     () =>
@@ -147,16 +147,21 @@ export default function App() {
     [state, commit, showNotice]
   );
 
+  const trayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     if (!state || !summary) return;
     const nearest =
       summary.nearestPlan && summary.nearestDueDate
         ? `下一续费：${summary.nearestPlan} · ${summary.nearestDueDate}`
         : "下一续费：—";
-    void invoke("update_tray_menu", {
-      pendingCount: summary.pendingRenewCount,
-      nearestLabel: nearest.slice(0, 80),
-    }).catch(() => {});
+    if (trayTimer.current) clearTimeout(trayTimer.current);
+    trayTimer.current = setTimeout(() => {
+      void invoke("update_tray_menu", {
+        pendingCount: summary.pendingRenewCount,
+        nearestLabel: nearest.slice(0, 80),
+      }).catch(() => {});
+    }, 800);
   }, [state, summary]);
 
   useEffect(() => {
@@ -272,8 +277,13 @@ export default function App() {
               </button>
             </div>
             <div className="toolbar__group">
-              <button type="button" onClick={() => void requestNotify(setNotifyOn)}>
-                提醒
+              <button
+                type="button"
+                className={notifyOn ? "is-on" : ""}
+                onClick={() => void toggleNotify(!notifyOn, setNotifyOn)}
+                title={notifyOn ? "点击关闭续费提醒" : "点击开启续费提醒"}
+              >
+                {notifyOn ? "提醒 ●" : "提醒"}
               </button>
             </div>
           </div>

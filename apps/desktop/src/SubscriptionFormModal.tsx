@@ -303,6 +303,7 @@ export function SubscriptionFormModal({
                 onChange={setSubDate}
                 isOpen={pickerOpen === "sub"}
                 onOpen={() => setPickerOpen("sub")}
+                onClose={() => setPickerOpen(null)}
               />
             </div>
             <div className="form-field">
@@ -313,6 +314,7 @@ export function SubscriptionFormModal({
                 onChange={setDueDate}
                 isOpen={pickerOpen === "due"}
                 onOpen={() => setPickerOpen("due")}
+                onClose={() => setPickerOpen(null)}
               />
             </div>
           </div>

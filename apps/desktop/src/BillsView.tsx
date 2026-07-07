@@ -62,7 +62,12 @@ export function BillsView({
                   </td>
                   <td>
                     <div className="actions">
-                      <button type="button" onClick={() => onCommit(deleteBill(state, bill.id))}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm("确定删除这笔账单？")) onCommit(deleteBill(state, bill.id));
+                        }}
+                      >
                         删
                       </button>
                     </div>

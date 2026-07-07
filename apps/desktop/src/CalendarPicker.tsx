@@ -7,6 +7,8 @@ interface Props {
   isOpen?: boolean;
   /** Called when the user opens the picker */
   onOpen?: () => void;
+  /** Called when the user closes the picker (controlled mode) */
+  onClose?: () => void;
   className?: string;
 }
 
@@ -27,7 +29,7 @@ function dateToIso(date: Date): string {
   return `${y}-${m}-${dd}`;
 }
 
-export function CalendarPicker({ value, onChange, isOpen: controlledOpen, onOpen, className }: Props) {
+export function CalendarPicker({ value, onChange, isOpen: controlledOpen, onOpen, onClose, className }: Props) {
   const today = new Date();
   const selected = value ? isoToDate(value) : today;
   const [viewYear, setViewYear] = useState(selected.getFullYear());
@@ -43,7 +45,7 @@ export function CalendarPicker({ value, onChange, isOpen: controlledOpen, onOpen
     const handler = (e: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
         if (controlledOpen !== undefined) {
-          onOpen?.(); // signal parent to close
+          onClose?.(); // signal parent to close
         } else {
           setInternalOpen(false);
         }
@@ -51,11 +53,12 @@ export function CalendarPicker({ value, onChange, isOpen: controlledOpen, onOpen
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [open, controlledOpen, onOpen]);
+  }, [open, controlledOpen, onClose]);
 
   function setOpen(o: boolean) {
     if (controlledOpen !== undefined) {
-      onOpen?.(); // signal parent to toggle
+      if (o) onOpen?.();
+      else onClose?.();
     } else {
       setInternalOpen(o);
     }

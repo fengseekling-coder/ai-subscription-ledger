@@ -210,5 +210,6 @@ export function deleteBill(state: AppState, billId: string): AppState {
 }
 
 export function setBudget(state: AppState, budget: number): AppState {
-  return { ...state, budget: Number(budget) || 500 };
+  const n = Number(budget);
+  return { ...state, budget: Number.isFinite(n) && n >= 0 ? n : 500 };
 }
