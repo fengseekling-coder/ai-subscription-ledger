@@ -54,8 +54,8 @@ export function rowSortKey(row: SubscriptionRow, ref = new Date()) {
   if (isRowExpired(row, ref)) return { tier: 3, urgency: 999997 };
   const left = daysUntil(row.dueDate, ref);
   if (left === null) return { tier: 1, urgency: 999998 };
-  if (left < 0) return { tier: 0, urgency: left };
-  return { tier: 0, urgency: left };
+  // Sort by urgency (days remaining), negative values (overdue) come first
+  return { tier: 0, urgency: left ?? 0 };
 }
 
 export function sortRowEntries<T extends { row: SubscriptionRow }>(entries: T[], ref = new Date()): T[] {

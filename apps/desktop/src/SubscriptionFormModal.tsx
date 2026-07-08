@@ -212,13 +212,23 @@ export function SubscriptionFormModal({
               onNotice("续费日期格式请使用 YYYY-MM-DD", true);
               return;
             }
+            const category = String(fd.get("category") ?? "").trim();
+            const plan = String(fd.get("plan") ?? "").trim();
+            if (!category) {
+              onNotice("请选择分类", true);
+              return;
+            }
+            if (!plan) {
+              onNotice("请填写套餐名称", true);
+              return;
+            }
             const patch = {
-              category: String(fd.get("category")),
-              plan: String(fd.get("plan")),
-              fee: String(fd.get("fee")),
+              category,
+              plan,
+              fee: String(fd.get("fee") ?? "").trim(),
               subscribedAt: subIso,
               dueDate: dueIso,
-              usage: String(fd.get("usage") ?? ""),
+              usage: String(fd.get("usage") ?? "").trim(),
               subscribed: fd.get("subscribed") === "on",
               expired: fd.get("expired") === "on",
             };
@@ -235,7 +245,12 @@ export function SubscriptionFormModal({
               const msg = subscribeNoticeAfterToggle(r, idx);
               if (msg) onNotice(msg);
             } else if (editIndex !== null) {
-              onCommit(updateRow(state, editIndex, patch));
+              const result = updateRow(state, editIndex, patch);
+              if ("error" in result) {
+                onNotice(result.error, true);
+                return;
+              }
+              onCommit(result);
               onClose();
               onNotice("已保存");
             }
@@ -339,7 +354,12 @@ export function SubscriptionFormModal({
                 className="danger-text"
                 onClick={() => {
                   if (!confirm(`确定删除「${editRow.plan}」？`)) return;
-                  onCommit(deleteRow(state, editIndex));
+                  const result = deleteRow(state, editIndex);
+                  if ("error" in result) {
+                    onNotice(result.error, true);
+                    return;
+                  }
+                  onCommit(result);
                   onClose();
                   onNotice("已删除。");
                 }}

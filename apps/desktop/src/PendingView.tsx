@@ -42,7 +42,12 @@ export function PendingView({ state, pending, summary, onCommit, showNotice }: P
               <button
                 type="button"
                 onClick={() => {
-                  onCommit(renewRow(state, index));
+                  const result = renewRow(state, index);
+                  if ("error" in result) {
+                    showNotice(result.error, true);
+                    return;
+                  }
+                  onCommit(result);
                   showNotice(`${row.plan} 已续费`);
                 }}
               >
@@ -53,8 +58,22 @@ export function PendingView({ state, pending, summary, onCommit, showNotice }: P
                 onClick={() =>
                   confirmUnrenewedOrDelete(
                     row.plan,
-                    () => onCommit(deleteRow(state, index)),
-                    () => onCommit(markUnrenewed(state, index, "unsubscribe"))
+                    () => {
+                      const result = deleteRow(state, index);
+                      if ("error" in result) {
+                        showNotice(result.error, true);
+                        return;
+                      }
+                      onCommit(result);
+                    },
+                    () => {
+                      const result = markUnrenewed(state, index, "unsubscribe");
+                      if ("error" in result) {
+                        showNotice(result.error, true);
+                        return;
+                      }
+                      onCommit(result);
+                    }
                   )
                 }
               >

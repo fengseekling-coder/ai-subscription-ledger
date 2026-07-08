@@ -23,6 +23,10 @@ export function buildSubTableHandlers(
   return {
     onToggle: (i) => {
       const next = toggleSubscribe(state, i);
+      if ("error" in next) {
+        showNotice(next.error, true);
+        return;
+      }
       commit(next);
       const msg = subscribeNoticeAfterToggle(next, i);
       if (msg) showNotice(msg);
@@ -31,9 +35,13 @@ export function buildSubTableHandlers(
     onPickDue: setDuePickIndex,
     onRenew: (i) => {
       const next = renewRow(state, i);
+      if ("error" in next) {
+        showNotice(next.error, true);
+        return;
+      }
       commit(next);
       if (renewNotice) {
-        showNotice(`${state.rows[i].plan} 已续费，续费日 → ${next.rows[i].dueDate}`);
+        showNotice(`${next.rows[i].plan} 已续费，续费日 → ${next.rows[i].dueDate}`);
       }
     },
     onMarkUnrenewed: (i) => {
@@ -41,19 +49,50 @@ export function buildSubTableHandlers(
       confirmUnrenewedOrDelete(
         row.plan,
         () => {
-          commit(deleteRow(state, i));
+          const result = deleteRow(state, i);
+          if ("error" in result) {
+            showNotice(result.error, true);
+            return;
+          }
+          commit(result);
           showNotice(`${row.plan} 已删除。`);
         },
         () => {
-          commit(markUnrenewed(state, i, "unsubscribe"));
+          const result = markUnrenewed(state, i, "unsubscribe");
+          if ("error" in result) {
+            showNotice(result.error, true);
+            return;
+          }
+          commit(result);
           showNotice(`${row.plan} 已改为未订阅。`);
         }
       );
     },
-    onMarkExpired: (i) => commit(markExpired(state, i)),
-    onClearExpired: (i) => commit(clearExpired(state, i)),
+    onMarkExpired: (i) => {
+      const result = markExpired(state, i);
+      if ("error" in result) {
+        showNotice(result.error, true);
+        return;
+      }
+      commit(result);
+    },
+    onClearExpired: (i) => {
+      const result = clearExpired(state, i);
+      if ("error" in result) {
+        showNotice(result.error, true);
+        return;
+      }
+      commit(result);
+    },
     onDelete: (i) => {
-      if (confirm("确定删除这一行？")) commit(deleteRow(state, i));
+      if (confirm("确定删除这一行？")) {
+        const result = deleteRow(state, i);
+        if ("error" in result) {
+          showNotice(result.error, true);
+          return;
+        }
+        commit(result);
+      }
     },
   };
 }

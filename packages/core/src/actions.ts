@@ -61,7 +61,10 @@ export function updateRowField(
   index: number,
   key: keyof SubscriptionRow,
   value: string
-): AppState {
+): AppState | { error: string } {
+  if (index < 0 || index >= state.rows.length) {
+    return { error: "索引超出范围" };
+  }
   const rows = state.rows.slice();
   const row = { ...rows[index], [key]: String(value).trim() } as SubscriptionRow;
   if (key === "category" || key === "plan" || key === "fee") {
@@ -73,13 +76,19 @@ export function updateRowField(
   return { ...state, rows };
 }
 
-export function updateRow(state: AppState, index: number, patch: Partial<SubscriptionRow>): AppState {
+export function updateRow(state: AppState, index: number, patch: Partial<SubscriptionRow>): AppState | { error: string } {
+  if (index < 0 || index >= state.rows.length) {
+    return { error: "索引超出范围" };
+  }
   const rows = state.rows.slice();
   rows[index] = normalizeRow({ ...rows[index], ...patch });
   return { ...state, rows };
 }
 
-export function toggleSubscribe(state: AppState, index: number, ref = new Date()): AppState {
+export function toggleSubscribe(state: AppState, index: number, ref = new Date()): AppState | { error: string } {
+  if (index < 0 || index >= state.rows.length) {
+    return { error: "索引超出范围" };
+  }
   void ref;
   const rows = state.rows.slice();
   const row = { ...rows[index] };
@@ -111,62 +120,80 @@ export function pickDueDate(
   rawInput: string | null,
   ref = new Date()
 ): { state: AppState } | { error: string } {
+  if (index < 0 || index >= state.rows.length) {
+    return { error: "索引超出范围" };
+  }
   void ref;
   if (rawInput === null) return { state };
   const iso = normalizeDateInput(rawInput);
   if (iso === null) return { error: "日期格式请使用 YYYY-MM-DD" };
-  return { state: updateRowField(state, index, "dueDate", iso) };
+  const result = updateRowField(state, index, "dueDate", iso);
+  if ("error" in result) return result;
+  return { state: result };
 }
 
-export function markExpired(state: AppState, index: number): AppState {
+export function markExpired(state: AppState, index: number): AppState | { error: string } {
+  if (index < 0 || index >= state.rows.length) {
+    return { error: "索引超出范围" };
+  }
   const rows = state.rows.slice();
   if (!rows[index].subscribed) return state;
   rows[index] = { ...rows[index], expired: true };
   return { ...state, rows };
 }
 
-export function clearExpired(state: AppState, index: number): AppState {
+export function clearExpired(state: AppState, index: number): AppState | { error: string } {
+  if (index < 0 || index >= state.rows.length) {
+    return { error: "索引超出范围" };
+  }
   const rows = state.rows.slice();
   rows[index] = { ...rows[index], expired: false };
   return { ...state, rows };
 }
 
-export function deleteRow(state: AppState, index: number): AppState {
+export function deleteRow(state: AppState, index: number): AppState | { error: string } {
+  if (index < 0 || index >= state.rows.length) {
+    return { error: "索引超出范围" };
+  }
   const row = state.rows[index];
   const rows = state.rows.filter((_, i) => i !== index);
-  const bills = row
-    ? state.bills.filter((b) => b.subscriptionId !== row.id)
-    : state.bills;
+  const bills = state.bills.filter((b) => b.subscriptionId !== row.id);
   return { ...state, rows, bills };
 }
 
-export function markUnrenewed(state: AppState, index: number, choice: "delete" | "unsubscribe"): AppState {
+export function markUnrenewed(state: AppState, index: number, choice: "delete" | "unsubscribe"): AppState | { error: string } {
   if (choice === "delete") return deleteRow(state, index);
-  return updateRow(state, index, { subscribed: false, dueDate: "", subscribedAt: "", expired: false });
+  const result = updateRow(state, index, { subscribed: false, dueDate: "", subscribedAt: "", expired: false });
+  if ("error" in result) return result;
+  return result;
 }
 
-export function renewRow(state: AppState, index: number, ref = new Date()): AppState {
+export function renewRow(state: AppState, index: number, ref = new Date()): AppState | { error: string } {
+  if (index < 0 || index >= state.rows.length) {
+    return { error: "索引超出范围" };
+  }
   const rows = state.rows.slice();
-  const row = { ...rows[index] };
-  const prevDue = row.dueDate;
-  row.dueDate = nextMonthlyDueDate(row.dueDate, ref);
-  row.subscribed = true;
-  row.expired = false;
-  rows[index] = row;
+  const prevDue = rows[index].dueDate;
+  rows[index] = normalizeRow({
+    ...rows[index],
+    dueDate: nextMonthlyDueDate(rows[index].dueDate, ref),
+    subscribed: true,
+    expired: false,
+  });
   const bills = [...state.bills];
-  const amt = moneyValue(row.fee);
+  const amt = moneyValue(rows[index].fee);
   if (amt > 0) {
     const monthKey = todayLocalISO().slice(0, 7);
     const dup = bills.some(
       (b) =>
-        b.subscriptionId === row.id &&
+        b.subscriptionId === rows[index].id &&
         b.kind === "renewal" &&
         b.paidAt.slice(0, 7) === monthKey
     );
     if (!dup) {
       bills.push(
         normalizeBill({
-          subscriptionId: row.id,
+          subscriptionId: rows[index].id,
           amount: amt,
           paidAt: todayLocalISO(),
           orderId: "",

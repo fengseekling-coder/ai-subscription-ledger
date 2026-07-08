@@ -14,13 +14,6 @@ unsafe fn msg_send_0(obj: *mut c_void, sel_name: &str) -> *mut c_void {
     objc_msgSend(obj, sel)
 }
 
-// Helper: send message with 1 pointer arg
-unsafe fn msg_send_1(obj: *mut c_void, sel_name: &str, arg: *mut c_void) -> *mut c_void {
-    let sel_c = CString::new(sel_name).unwrap();
-    let sel = sel_registerName(sel_c.as_ptr());
-    objc_msgSend(obj, sel, arg)
-}
-
 // Helper: send message with 1 usize arg
 unsafe fn msg_send_usize(obj: *mut c_void, sel_name: &str, arg: usize) -> *mut c_void {
     let sel_c = CString::new(sel_name).unwrap();
@@ -136,7 +129,7 @@ pub fn ocr_image_rgba(rgba: &[u8], width: usize, height: usize) -> Result<String
 
         let count: usize = {
             let sel_c = CString::new("count").unwrap();
-            let sel = sel_registerName(sel_c.as_ptr());
+            let _sel = sel_registerName(sel_c.as_ptr());
             msg_send_0(results, "count") as usize
         };
 
@@ -168,6 +161,12 @@ pub fn ocr_image_rgba(rgba: &[u8], width: usize, height: usize) -> Result<String
 }
 
 unsafe fn create_cgimage_from_rgba(rgba: &[u8], width: usize, height: usize) -> Result<*mut c_void, String> {
+    // Defense-in-depth: verify data length matches dimensions
+    let expected_len = width * height * 4;
+    if rgba.len() != expected_len {
+        return Err("RGBA 数据长度与宽高不匹配".to_string());
+    }
+
     // NSBitmapImageRep — 最直接的方式从 raw RGBA 创建 CGImage
     let cls = objc_getClass(CString::new("NSBitmapImageRep").unwrap().as_ptr());
     if cls.is_null() {

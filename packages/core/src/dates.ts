@@ -1,5 +1,8 @@
 export function formatDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 export function todayLocalISO(): string {
@@ -13,9 +16,14 @@ export function currentMonthKey(ref = new Date()): string {
 
 export function daysUntil(iso: string | undefined | null, ref = new Date()): number | null {
   if (!iso) return null;
-  const due = new Date(iso + "T00:00:00");
+  // Parse iso as local noon to anchor both dates to the same timezone reference.
+  // Using local time avoids UTC-offset drift (e.g., UTC+8: "2026-07-07" becomes
+  // 20:00 UTC, not 00:00). Using noon anchors both dates to the same local day
+  // so the comparison is timezone-independent: due is noon of the due day, now is
+  // noon of today, and the ceiling-difference gives the calendar day count.
+  const due = new Date(iso + "T12:00:00");
   const now = new Date(ref);
-  now.setHours(0, 0, 0, 0);
+  now.setHours(12, 0, 0, 0);
   return Math.ceil((due.getTime() - now.getTime()) / 86400000);
 }
 
@@ -30,7 +38,8 @@ export function addMonths(date: Date, months: number): Date {
 export function nextMonthlyDueDate(iso: string | undefined, ref = new Date()): string {
   const now = new Date(ref);
   now.setHours(0, 0, 0, 0);
-  let due = iso ? new Date(iso + "T00:00:00") : new Date(now);
+  // Use T12:00:00 to avoid timezone issues when parsing date-only strings
+  let due = iso ? new Date(iso + "T12:00:00") : new Date(now);
   if (Number.isNaN(due.getTime())) due = new Date(now);
   do {
     due = addMonths(due, 1);

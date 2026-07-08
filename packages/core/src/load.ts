@@ -98,8 +98,10 @@ function hydrateImportedState(parsed: {
     Array.isArray(parsed.bills) ? parsed.bills.map((b) => normalizeBill(b as Partial<Bill>)) : []
   );
   ensureSubscribedAtFromRows(rows, bills);
+  const rawBudget = Number(parsed.budget);
+  const budget = Number.isFinite(rawBudget) && rawBudget >= 0 ? rawBudget : 500;
   return {
-    budget: Number(parsed.budget) || 500,
+    budget,
     rows,
     bills,
   };

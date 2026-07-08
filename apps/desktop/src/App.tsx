@@ -18,6 +18,7 @@ import { CatalogModal } from "./CatalogModal";
 import { Dashboard } from "./Dashboard";
 import { DueDatePickerModal } from "./DueDatePickerModal";
 import { PendingView } from "./PendingView";
+import { SettingsModal } from "./SettingsModal";
 import { StatsView } from "./StatsView";
 import { SubTable } from "./SubTable";
 import { buildSubTableHandlers } from "./subTableHandlers";
@@ -51,14 +52,50 @@ export default function App() {
   const [listQuery, setListQuery] = useState("");
   const [duePickIndex, setDuePickIndex] = useState<number | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef<AppState | null>(null);
   const [notifyOn, setNotifyOn] = useState(localStorage.getItem("ai-sub-notify") === "on");
   const [isLoading, setIsLoading] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
+  const [lockChecked, setLockChecked] = useState(false);
+  const [pinError, setPinError] = useState("");
+  const [pinInput, setPinInput] = useState("");
   stateRef.current = state;
 
+  // Check app lock on mount; if disabled, unlock immediately
+  useEffect(() => {
+    void invoke<boolean>("app_lock_is_enabled").then((enabled) => {
+      if (!enabled) setUnlocked(true);
+      setLockChecked(true);
+    });
+  }, []);
+
+  const verifyPin = useCallback(async (pin: string) => {
+    setPinError("");
+    try {
+      const ok = await invoke<boolean>("app_lock_verify_pin", { pin });
+      if (ok) {
+        setUnlocked(true);
+        setPinInput("");
+      } else {
+        setPinError("PIN 错误");
+      }
+    } catch {
+      setPinError("验证失败，请重试");
+    }
+  }, []);
+
   const showNotice = useCallback((text: string, danger = false) => {
+    // Clear existing notice timer to prevent showing stale notice
+    if (noticeTimer.current) {
+      clearTimeout(noticeTimer.current);
+    }
     setNotice({ text, danger });
-    window.setTimeout(() => setNotice(null), danger ? 8000 : 5000);
+    noticeTimer.current = window.setTimeout(() => {
+      setNotice(null);
+      noticeTimer.current = null;
+    }, danger ? 8000 : 5000);
   }, []);
 
   const commit = useCallback(
@@ -75,11 +112,12 @@ export default function App() {
   );
 
   useEffect(() => {
+    if (!unlocked) return;
     setIsLoading(true);
     loadAppState()
       .then((s) => { setState(s); setIsLoading(false); })
       .catch(() => { setState(null); setIsLoading(false); showNotice("加载数据失败", true); });
-  }, [showNotice]);
+  }, [unlocked, showNotice]);
 
   useEffect(() => {
     const unlisten = listen<string>("navigate", (e) => {
@@ -161,7 +199,14 @@ export default function App() {
         pendingCount: summary.pendingRenewCount,
         nearestLabel: nearest.slice(0, 80),
       }).catch(() => {});
+      trayTimer.current = null;
     }, 800);
+    return () => {
+      if (trayTimer.current) {
+        clearTimeout(trayTimer.current);
+        trayTimer.current = null;
+      }
+    };
   }, [state, summary]);
 
   useEffect(() => {
@@ -285,6 +330,9 @@ export default function App() {
               >
                 {notifyOn ? "提醒 ●" : "提醒"}
               </button>
+              <button type="button" onClick={() => setShowSettings(true)} title="设置">
+                ⚙
+              </button>
             </div>
           </div>
         </div>
@@ -395,6 +443,33 @@ export default function App() {
         )}
       </main>
 
+      {/* PIN gate — shown when app lock is enabled and not yet unlocked */}
+      {lockChecked && !unlocked && (
+        <div className="pin-gate">
+          <div className="pin-gate__card">
+            <h2 className="pin-gate__title">🔒 应用已锁定</h2>
+            <p className="pin-gate__desc">输入 PIN 以解锁</p>
+            <input
+              className="pin-gate__input"
+              type="password"
+              placeholder="PIN"
+              value={pinInput}
+              onChange={(e) => { setPinInput(e.target.value); setPinError(""); }}
+              onKeyDown={(e) => { if (e.key === "Enter") verifyPin(pinInput); }}
+              autoFocus
+            />
+            {pinError && <p className="pin-gate__error">{pinError}</p>}
+            <button
+              className="primary"
+              type="button"
+              onClick={() => verifyPin(pinInput)}
+            >
+              解锁
+            </button>
+          </div>
+        </div>
+      )}
+
       {state && subModalMode && subFormDraft && (
         <SubscriptionFormModal
           mode={subModalMode}
@@ -429,6 +504,8 @@ export default function App() {
           }}
         />
       )}
+
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
 
     </div>
   );

@@ -1,16 +1,21 @@
 import { pendingRenewItems, type AppState } from "@ai-sub/core";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 export function useRenewReminders(
   state: AppState | null,
   notifyOn: boolean,
   showNotice: (text: string, danger?: boolean) => void
 ) {
+  const stateRef = useRef(state);
+  // Keep stateRef in sync to avoid stale closure in checkReminders
+  stateRef.current = state;
+
   const checkReminders = useCallback(
     async (force: boolean) => {
-      if (!state) return;
-      const items = pendingRenewItems(state.rows);
+      const currentState = stateRef.current;
+      if (!currentState) return;
+      const items = pendingRenewItems(currentState.rows);
       if (!items.length) {
         if (force) showNotice("当前没有 3 天内需要续费的已订阅套餐。");
         return;
@@ -25,7 +30,7 @@ export function useRenewReminders(
         }
       }
     },
-    [state, notifyOn, showNotice]
+    [notifyOn, showNotice]
   );
 
   useEffect(() => {
