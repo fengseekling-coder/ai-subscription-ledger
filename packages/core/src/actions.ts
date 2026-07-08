@@ -1,8 +1,7 @@
-import { nextMonthlyDueDate, todayLocalISO } from "./dates.js";
+import { nextMonthlyDueDate, normalizeDateInput, todayLocalISO } from "./dates.js";
 import { moneyValue } from "./money.js";
 import { normalizeBill, normalizeRow } from "./normalize.js";
 import { isActiveSubscription, needsDueDate } from "./rules.js";
-import { normalizeDateInput } from "./dates.js";
 import { rowFromCatalogId } from "./catalog/from-catalog.js";
 import type { AppState, Bill, SubscriptionRow } from "./types.js";
 
