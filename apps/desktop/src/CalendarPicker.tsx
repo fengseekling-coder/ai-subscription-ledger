@@ -39,6 +39,14 @@ export function CalendarPicker({ value, onChange, isOpen: controlledOpen, onOpen
 
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
 
+  // Sync view when external value changes while closed
+  useEffect(() => {
+    if (!open) {
+      setViewYear(selected.getFullYear());
+      setViewMonth(selected.getMonth());
+    }
+  }, [value, open]);
+
   // Close on outside click
   useEffect(() => {
     if (!open) return;

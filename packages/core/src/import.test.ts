@@ -318,7 +318,10 @@ describe("dates", () => {
     it("returns today's date in YYYY-MM-DD format", () => {
       const result = todayLocalISO();
       expect(result).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-      expect(result).toBe(new Date().toISOString().slice(0, 10));
+      // Compare against local date, not UTC
+      const now = new Date();
+      const expected = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      expect(result).toBe(expected);
     });
   });
 

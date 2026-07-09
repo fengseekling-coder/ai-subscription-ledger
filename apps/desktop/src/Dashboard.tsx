@@ -76,7 +76,15 @@ export function Dashboard({ state, summary, onCommit }: Props) {
               min={0}
               step={1}
               value={state.budget}
-              onChange={(e) => onCommit(setBudget(state, Number(e.target.value)))}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (Number.isFinite(v) && v >= 0) {
+                  onCommit(setBudget(state, v));
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
             />
             元
           </label>
