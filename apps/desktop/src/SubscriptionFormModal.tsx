@@ -1,9 +1,12 @@
 import {
   addRowWithDetails,
   deleteRow,
+  normalizeBill,
   normalizeDateInput,
   runConnectorPaste,
+  subById,
   subscribeNoticeAfterToggle,
+  todayLocalISO,
   updateRow,
   type AppState,
   type SubscriptionRow,
@@ -24,15 +27,17 @@ export type SubscriptionFormDraft = {
   expired: boolean;
 };
 
-/** 从解析结果提取表单字段值 */
-function extractFields(raw: string): {
+/** 从解析结果提取表单字段值，autoMatch 为 true 时自动匹配已有订阅 */
+function extractFields(raw: string, stateRows: AppState["rows"], autoMatch: boolean = false): {
   plan?: string;
   fee?: string;
   usage?: string;
   subscribedAt?: string;
   category?: string;
+  matchedSubId?: string;
+  matchedPlan?: string;
 } {
-  const out: { plan?: string; fee?: string; usage?: string; subscribedAt?: string; category?: string } = {};
+  const out: { plan?: string; fee?: string; usage?: string; subscribedAt?: string; category?: string; matchedSubId?: string; matchedPlan?: string } = {};
 
   // 尝试 JSON
   try {
@@ -71,6 +76,45 @@ function extractFields(raw: string): {
   const dateM = raw.match(/(\d{4}-\d{2}-\d{2})/);
   if (dateM && !out.subscribedAt) out.subscribedAt = dateM[1];
 
+  // 自动匹配已有订阅（仅在 autoMatch=true 时）
+  if (autoMatch && out.plan && stateRows) {
+    const planLower = out.plan.toLowerCase();
+    // 优先匹配：精确匹配 > 包含匹配 > 部分匹配
+    const exactMatch = stateRows.find(
+      (r) => r.plan.toLowerCase() === planLower && r.subscribed
+    );
+    if (exactMatch) {
+      out.matchedSubId = exactMatch.id;
+      out.matchedPlan = exactMatch.plan;
+      // 如果没有明确解析出分类（默认分类是"官方"），使用匹配到的订阅分类
+      if (!out.category || out.category === "官方") {
+        out.category = exactMatch.category;
+      }
+      // 如果没有解析出金额，使用订阅的金额
+      if (!out.fee) {
+        out.fee = exactMatch.fee;
+      }
+    } else {
+      // 模糊匹配：OCR 文本中包含订阅名称的一部分
+      const partialMatch = stateRows.find(
+        (r) =>
+          r.subscribed &&
+          r.plan.length >= 3 &&
+          planLower.includes(r.plan.toLowerCase())
+      );
+      if (partialMatch) {
+        out.matchedSubId = partialMatch.id;
+        out.matchedPlan = partialMatch.plan;
+        if (!out.category || out.category === "官方") {
+          out.category = partialMatch.category;
+        }
+        if (!out.fee) {
+          out.fee = partialMatch.fee;
+        }
+      }
+    }
+  }
+
   return out;
 }
 
@@ -98,10 +142,16 @@ export function SubscriptionFormModal({
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [ocrLoading, setOcrLoading] = useState(false);
+  const [matchedSub, setMatchedSub] = useState<{ id: string; plan: string } | null>(null);
   const [subDate, setSubDate] = useState(draft.subscribedAt);
   const [dueDate, setDueDate] = useState(draft.dueDate);
   /** "sub" | "due" | null — tracks which calendar picker is currently open */
   const [pickerOpen, setPickerOpen] = useState<"sub" | "due" | null>(null);
+
+  // Reset matchedSub when modal opens (form key changes)
+  useEffect(() => {
+    setMatchedSub(null);
+  }, [mode, editIndex]);
 
   const handlePasteImage = async () => {
     try {
@@ -113,14 +163,37 @@ export function SubscriptionFormModal({
         return;
       }
       // 把 RGBA 数据转成 PNG 传给 Rust OCR
-      const result = await invoke<string>("ocr_image", {
+      const ocrText = await invoke<string>("ocr_image", {
         data: Array.from(rgba),
         width: size.width,
         height: size.height,
       });
-      if (result) {
-        setPasteText(result);
-        onNotice("已识别图片文字，请点击解析填充");
+      if (ocrText) {
+        // 自动匹配订阅
+        const fields = extractFields(ocrText, state.rows, true);
+        if (fields.matchedSubId && fields.matchedPlan) {
+          // 找到匹配订阅，自动填充并提示
+          setPasteText(ocrText);
+          setMatchedSub({ id: fields.matchedSubId, plan: fields.matchedPlan });
+          // 如果解析到分类或金额，也填入表单
+          if (fields.category) {
+            const el = formRef.current?.elements.namedItem("category") as HTMLSelectElement | null;
+            if (el) el.value = fields.category;
+          }
+          if (fields.fee) {
+            const el = formRef.current?.elements.namedItem("fee") as HTMLInputElement | null;
+            if (el) el.value = fields.fee;
+          }
+          if (fields.subscribedAt) {
+            setSubDate(fields.subscribedAt);
+          }
+          onNotice(`已自动匹配订阅「${fields.matchedPlan}」，确认后将为该订阅添加账单`);
+        } else {
+          // 未匹配，显示解析结果让用户手动选择
+          setPasteText(ocrText);
+          setMatchedSub(null);
+          onNotice("未匹配到已有订阅，请手动选择或新建");
+        }
       } else {
         onNotice("未识别到文字", true);
       }
@@ -147,7 +220,7 @@ export function SubscriptionFormModal({
 
   const applyPaste = () => {
     if (!pasteText.trim() || !formRef.current) return;
-    const fields = extractFields(pasteText);
+    const fields = extractFields(pasteText, state.rows);
     const form = formRef.current;
     let filled = 0;
 
@@ -232,6 +305,30 @@ export function SubscriptionFormModal({
               subscribed: fd.get("subscribed") === "on",
               expired: fd.get("expired") === "on",
             };
+            // 如果 OCR 匹配到了订阅，直接添加账单而不是新建订阅
+            if (matchedSub && isAdd) {
+              const matched = subById(state, matchedSub.id);
+              if (matched) {
+                // 获取表单中的金额（优先使用表单值，否则用订阅原价）
+                const amount = String(fd.get("fee") ?? "").trim() || matched.fee;
+                const note = String(fd.get("usage") ?? "").trim();
+                // 使用本地时间而非 UTC
+                const paidAt = subIso || todayLocalISO();
+                // 直接添加账单到匹配的订阅
+                const newBill = normalizeBill({
+                  subscriptionId: matched.id,
+                  amount: parseFloat(amount) || 0,
+                  paidAt,
+                  orderId: "",
+                  note,
+                  kind: "payment",
+                });
+                onCommit({ ...state, bills: [...state.bills, newBill] });
+                onClose();
+                onNotice(`已为「${matched.plan}」添加账单 ${amount} 元`);
+                return;
+              }
+            }
             if (isAdd) {
               const r = addRowWithDetails(state, patch);
               if ("error" in r) {
