@@ -51,10 +51,12 @@ export function nextMonthlyDueDate(iso: string | undefined, ref = new Date()): s
 export function normalizeDateInput(raw: unknown): string | null {
   const s = String(raw ?? "").trim();
   if (!s) return "";
+  // ISO format
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
     const d = new Date(s + "T12:00:00");
     return Number.isNaN(d.getTime()) ? null : s;
   }
+  // Various separators: 2024/07/09, 2024.07.09, 2024年07月09日
   const m = s.match(/^(\d{4})[/.年](\d{1,2})[/.月](\d{1,2})/);
   if (m) {
     const y = m[1];
@@ -64,7 +66,48 @@ export function normalizeDateInput(raw: unknown): string | null {
     const d = new Date(iso + "T12:00:00");
     return Number.isNaN(d.getTime()) ? null : iso;
   }
+  // Compact: 20240709
+  const compact = s.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compact) {
+    const iso = `${compact[1]}-${compact[2]}-${compact[3]}`;
+    const d = new Date(iso + "T12:00:00");
+    return Number.isNaN(d.getTime()) ? null : iso;
+  }
+  // Relative dates
+  const today = new Date();
+  const lower = s.toLowerCase();
+  if (lower === "today" || lower === "今天") return formatDate(today);
+  if (lower === "tomorrow" || lower === "明天") {
+    const tm = new Date(today);
+    tm.setDate(today.getDate() + 1);
+    return formatDate(tm);
+  }
+  if (lower === "yesterday" || lower === "昨天") {
+    const yd = new Date(today);
+    yd.setDate(today.getDate() - 1);
+    return formatDate(yd);
+  }
+  // Relative: +3, -5, +3天, -5天
+  const relMatch = s.match(/^([+-]\d+)\s*(?:天|days?)?$/i);
+  if (relMatch) {
+    const days = parseInt(relMatch[1], 10);
+    const dt = new Date(today);
+    dt.setDate(today.getDate() + days);
+    return formatDate(dt);
+  }
   return null;
+}
+
+/** 验证日期格式是否有效，返回提示信息 */
+export function validateDateInput(raw: unknown): { valid: boolean; message?: string; normalized?: string } {
+  const result = normalizeDateInput(raw);
+  if (result === null) {
+    return { valid: false, message: "日期格式无效，请使用 YYYY-MM-DD 或 今天/明天/+3 等格式" };
+  }
+  if (result === "") {
+    return { valid: true, normalized: "" };
+  }
+  return { valid: true, normalized: result };
 }
 
 export function dueMeta(iso: string | undefined, ref = new Date()): { label: string; cls: string } {
@@ -74,4 +117,42 @@ export function dueMeta(iso: string | undefined, ref = new Date()): { label: str
   if (left === 0) return { label: "今天到期", cls: "soon" };
   if (left <= 3) return { label: `剩余 ${left} 天`, cls: "soon" };
   return { label: `剩余 ${left} 天`, cls: "safe" };
+}
+
+/**
+ * English short-month-name → "MM" lookup. Keys are lowercase and matched against
+ * the first 3 letters of the input, so "jan", "Jan", "January", "jAnUaRy" all
+ * resolve to "01".
+ */
+export const EN_MONTH_TO_NUM: Record<string, string> = {
+  jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+  jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+};
+
+/**
+ * Match a free-form English-month date string like "16 Jul 2026",
+ * "16th Jul, 2026", or "Jul 16, 2026". Returns ISO YYYY-MM-DD, or null if
+ * no recognizable date is found.
+ *
+ * Day/month order is auto-detected by checking whether the first group is
+ * a digit (DD Mon YYYY) or a month name (Mon DD YYYY).
+ */
+export function normalizeEnglishMonthDate(raw: string): string | null {
+  const m1 = raw.match(/(\d{1,2})(?:st|nd|rd|th)?\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*,?\s*(\d{4})/i);
+  const m2 = raw.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})(?:st|nd|rd|th)?\s*,?\s*(\d{4})/i);
+  const hit = m1 || m2;
+  if (!hit) return null;
+  let day: string, month: string, year: string;
+  if (m1 && /\d/.test(hit[1])) {
+    day = hit[1].padStart(2, "0");
+    month = EN_MONTH_TO_NUM[hit[2].toLowerCase().slice(0, 3)];
+    year = hit[3];
+  } else if (m2) {
+    month = EN_MONTH_TO_NUM[hit[1].toLowerCase().slice(0, 3)];
+    day = hit[2].padStart(2, "0");
+    year = hit[3];
+  } else {
+    return null;
+  }
+  return month ? `${year}-${month}-${day}` : null;
 }

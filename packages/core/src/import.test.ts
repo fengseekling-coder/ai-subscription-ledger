@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { loadFromJson, createEmptyState, createDemoState } from "./load.js";
 import { normalizeRow, normalizeBill } from "./normalize.js";
 import { moneyValue, fmtMoney } from "./money.js";
-import { daysUntil, formatDate, todayLocalISO, normalizeDateInput } from "./dates.js";
+import { daysUntil, formatDate, todayLocalISO, normalizeDateInput, normalizeEnglishMonthDate } from "./dates.js";
 
 describe("loadFromJson", () => {
   it("rejects non-object root via empty state", () => {
@@ -396,6 +396,30 @@ describe("dates", () => {
     it("pads single-digit month and day", () => {
       expect(normalizeDateInput("2026/7/5")).toBe("2026-07-05");
       expect(normalizeDateInput("2026年7月15日")).toBe("2026-07-15");
+    });
+  });
+
+  describe("normalizeEnglishMonthDate", () => {
+    it("parses '16 Jul 2026'", () => {
+      expect(normalizeEnglishMonthDate("Order 16 Jul 2026 $29.9")).toBe("2026-07-16");
+    });
+
+    it("parses '16th Jul, 2026'", () => {
+      expect(normalizeEnglishMonthDate("Paid 16th Jul, 2026")).toBe("2026-07-16");
+    });
+
+    it("parses 'Jul 16, 2026'", () => {
+      expect(normalizeEnglishMonthDate("Receipt: Jul 16, 2026")).toBe("2026-07-16");
+    });
+
+    it("is case-insensitive on month name", () => {
+      expect(normalizeEnglishMonthDate("JAN 5 2026")).toBe("2026-01-05");
+      expect(normalizeEnglishMonthDate("5 january 2026")).toBe("2026-01-05");
+    });
+
+    it("returns null when no recognizable date is present", () => {
+      expect(normalizeEnglishMonthDate("no date here")).toBeNull();
+      expect(normalizeEnglishMonthDate("2026/07/05")).toBeNull();
     });
   });
 });

@@ -1,6 +1,6 @@
 import { normalizeBill, normalizeRow } from "../normalize.js";
 import { moneyValue } from "../money.js";
-import { todayLocalISO } from "../dates.js";
+import { normalizeEnglishMonthDate, todayLocalISO } from "../dates.js";
 import type { AppState, Bill, SubscriptionRow } from "../types.js";
 import type { ConnectorPasteResult } from "./types.js";
 
@@ -42,33 +42,56 @@ function parseOpenAiUsageJson(raw: string): ConnectorPasteResult {
   return { bills, note: `OpenAI 用量 ${bills.length} 条` };
 }
 
-/** 纯文本：订单号、日期、金额（中转站常见） */
+/** 纯文本：订单号、日期、金额（中转站/VM 服务常见） */
 function parseRelayOrderText(raw: string): ConnectorPasteResult {
-  const lines = raw.split(/\n+/).map((l) => l.trim()).filter(Boolean);
   const bills: Partial<Bill>[] = [];
   const rows: Partial<SubscriptionRow>[] = [];
-  for (const line of lines) {
-    const orderM = line.match(/订单\s*([A-Za-z0-9-]+)/i) || line.match(/\b(HS\d+[A-Z0-9]+)\b/);
-    const dateM = line.match(/(\d{4}-\d{2}-\d{2})/);
-    const amtM =
-      line.match(/[¥￥]\s*(\d+(?:\.\d+)?)/)?.[1] ||
-      line.match(/(?:^|[^\d])(\d+(?:\.\d+)?)\s*(?:元|块|rmb)?\s*$/)?.[1] ||
-      null;
-    if (orderM || dateM) {
-      const paidAt = dateM?.[1] ?? todayLocalISO();
-      const amount = amtM ? moneyValue(amtM) : 0;
-      bills.push(
-        normalizeBill({
-          amount,
-          paidAt,
-          orderId: orderM?.[1] ?? "",
-          note: line.slice(0, 120),
-          kind: "payment",
-        })
-      );
+
+  // 整段文本匹配（不按行）
+  // 订单号：#DMIT-, 訂單, 订单, DMIT-
+  const orderM =
+    raw.match(/#([A-Za-z0-9-]{5,})/)?.[1] ||
+    raw.match(/[訂订]單\s*([A-Za-z0-9-]+)/i)?.[1] ||
+    raw.match(/账单\s*#?([A-Za-z0-9-]+)/i)?.[1] ||
+    raw.match(/\b(DMIT-\d+)\b/i)?.[1];
+
+  // 日期：YYYY-MM-DD, MM/DD/YYYY, 16 Jul 2026, Jul 16 2026
+  const isoDate = raw.match(/(\d{4}-\d{2}-\d{2})/)?.[1];
+  const slashMatch = raw.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  const wordDate = !isoDate && !slashMatch ? normalizeEnglishMonthDate(raw) : null;
+  const dateM: string | null =
+    isoDate ??
+    (slashMatch ? `${slashMatch[3]}-${slashMatch[1]}-${slashMatch[2]}` : null) ??
+    wordDate;
+
+  // 金额：$16.90 USD, ¥29.9, 16.90 USD
+  const amtM =
+    raw.match(/\$\s*(\d+(?:\.\d+)?)/)?.[1] ||
+    raw.match(/[¥￥]\s*(\d+(?:\.\d+)?)/)?.[1] ||
+    null;
+
+  if (orderM || dateM) {
+    let paidAt = todayLocalISO();
+    if (dateM) {
+      paidAt = dateM;
     }
+
+    const amount = amtM ? moneyValue(amtM) : 0;
+
+    bills.push(
+      normalizeBill({
+        amount,
+        paidAt,
+        orderId: orderM ?? "",
+        note: raw.slice(0, 200),
+        kind: "payment",
+      })
+    );
+    return { bills, note: `解析 1 笔账单` };
   }
-  if (!bills.length && raw.length < 500) {
+
+  // 无法解析时 fallback
+  if (raw.length < 500) {
     rows.push(
       normalizeRow({
         category: "中转",

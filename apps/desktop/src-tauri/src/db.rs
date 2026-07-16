@@ -4,19 +4,25 @@ use aes_gcm::{
 };
 use rand::RngCore;
 use rusqlite::{params, Connection};
-use security_framework::passwords::{get_generic_password, set_generic_password};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::Manager;
 use thiserror::Error;
 
 const KEY_STATE: &str = "ai-subscription-tracker-v3";
-const KEYCHAIN_SERVICE: &str = "com.azhuilab.subscription-ledger";
-const KEYCHAIN_KEY: &str = "encryption-key";
+const KEY_FILE: &str = ".ledger_key";
 // Magic prefix for all new encrypted writes. Unambiguously distinguishes encrypted
 // format (always starts with this prefix) from legacy unencrypted JSON (never has it).
 // Length = 12 bytes, matching the AES-GCM nonce size.
 const ENCRYPTED_MAGIC: &[u8] = b"SUBLEDGER_V1";
+
+// ── Why no Keychain / stronghold / Windows DPAPI ─────────────────────────────
+// The previous design stored the AES key in the macOS Keychain via
+// security-framework. That caused the OS to prompt for permission every time
+// the key was read (each app launch), which most users found unacceptable for a
+// single-device local app. We deliberately keep the key in a 0o600 file on disk
+// so the app starts silently. Do NOT add Keychain / stronghold / DPAPI back
+// without revisiting this trade-off and adding a user-facing opt-in.
 
 #[derive(Debug, Error)]
 pub enum DbError {
@@ -50,43 +56,86 @@ pub struct AppStateDto {
     pub bills: Vec<serde_json::Value>,
 }
 
-// ── Keychain helpers ──────────────────────────────────────────────────────────
+fn default_state() -> AppStateDto {
+    AppStateDto {
+        budget: 500.0,
+        rows: vec![],
+        bills: vec![],
+    }
+}
 
-fn get_or_create_key() -> Result<[u8; 32], DbError> {
-    // Try to get existing key from Keychain
-    if let Some(key_bytes) = get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_KEY).ok() {
-        if key_bytes.len() == 32 {
-            let mut key = [0u8; 32];
-            key.copy_from_slice(&key_bytes);
-            return Ok(key);
-        }
-        // Key exists but has wrong length — this should not happen; fail loudly
-        // instead of silently generating a new key that makes old data unrecoverable.
+// ── Local key file (no Keychain prompts) ─────────────────────────────────────
+
+fn app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, DbError> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| DbError::Msg(e.to_string()))?;
+    std::fs::create_dir_all(&dir).map_err(|e| DbError::Msg(e.to_string()))?;
+    Ok(dir)
+}
+
+fn key_path(dir: &Path) -> PathBuf {
+    dir.join(KEY_FILE)
+}
+
+fn read_key_file(path: &Path) -> Result<[u8; 32], DbError> {
+    let bytes = std::fs::read(path).map_err(|e| DbError::Msg(e.to_string()))?;
+    if bytes.len() != 32 {
         return Err(DbError::Msg(format!(
-            "Keychain key has unexpected length {} (expected 32); cannot decrypt existing data. \
-            Please delete the app and reinstall, or contact support.",
-            key_bytes.len()
+            "Key file has unexpected length {} (expected 32)",
+            bytes.len()
         )));
     }
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&bytes);
+    Ok(key)
+}
 
-    // Generate new key — first time setup
+fn write_key_file(path: &Path, key: &[u8; 32]) -> Result<(), DbError> {
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)
+            .map_err(|e| DbError::Msg(e.to_string()))?;
+        file.write_all(key)
+            .map_err(|e| DbError::Msg(e.to_string()))?;
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, key).map_err(|e| DbError::Msg(e.to_string()))?;
+        Ok(())
+    }
+}
+
+fn get_or_create_key(app: &tauri::AppHandle) -> Result<[u8; 32], DbError> {
+    let dir = app_data_dir(app)?;
+    let path = key_path(&dir);
+
+    if path.exists() {
+        return read_key_file(&path);
+    }
+
     let mut key = [0u8; 32];
     OsRng.fill_bytes(&mut key);
-
-    set_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_KEY, &key)
-        .map_err(|e| DbError::Msg(format!("Keychain error: {}", e)))?;
-
+    write_key_file(&path, &key)?;
     Ok(key)
 }
 
 // ── Encryption helpers ────────────────────────────────────────────────────────
 
-fn encrypt_data(data: &[u8]) -> Result<Vec<u8>, DbError> {
-    let key = get_or_create_key()?;
+fn encrypt_data(app: &tauri::AppHandle, data: &[u8]) -> Result<Vec<u8>, DbError> {
+    let key = get_or_create_key(app)?;
     let cipher = Aes256Gcm::new_from_slice(&key)
         .map_err(|e| DbError::Msg(format!("Cipher init error: {}", e)))?;
 
-    // Generate random 12-byte nonce
     let mut nonce_bytes = [0u8; 12];
     OsRng.fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
@@ -95,25 +144,22 @@ fn encrypt_data(data: &[u8]) -> Result<Vec<u8>, DbError> {
         .encrypt(nonce, data)
         .map_err(|e| DbError::Msg(format!("Encryption error: {}", e)))?;
 
-    // Prepend magic prefix + nonce to ciphertext
     let mut result = ENCRYPTED_MAGIC.to_vec();
     result.extend_from_slice(&nonce_bytes);
     result.extend(ciphertext);
     Ok(result)
 }
 
-fn decrypt_data(encrypted: &[u8]) -> Result<Vec<u8>, DbError> {
-    // Minimum: 12 (magic) + 12 (nonce) + 16 (GCM tag) = 40 bytes
+fn decrypt_data(app: &tauri::AppHandle, encrypted: &[u8]) -> Result<Vec<u8>, DbError> {
     if encrypted.len() < 40 {
         return Err(DbError::Msg("Encrypted data too short".to_string()));
     }
 
-    // Strip magic prefix; remaining: 12 (nonce) + ciphertext
     let data = &encrypted[ENCRYPTED_MAGIC.len()..];
     let nonce = Nonce::from_slice(&data[..12]);
     let ciphertext = &data[12..];
 
-    let key = get_or_create_key()?;
+    let key = get_or_create_key(app)?;
     let cipher = Aes256Gcm::new_from_slice(&key)
         .map_err(|e| DbError::Msg(format!("Cipher init error: {}", e)))?;
 
@@ -125,18 +171,11 @@ fn decrypt_data(encrypted: &[u8]) -> Result<Vec<u8>, DbError> {
 // ── Database operations ───────────────────────────────────────────────────────
 
 pub fn db_path(app: &tauri::AppHandle) -> Result<PathBuf, DbError> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| DbError::Msg(e.to_string()))?;
-    std::fs::create_dir_all(&dir).map_err(|e| DbError::Msg(e.to_string()))?;
-    Ok(dir.join("ledger.db"))
+    Ok(app_data_dir(app)?.join("ledger.db"))
 }
 
 fn open(path: &PathBuf) -> Result<Connection, DbError> {
     let conn = Connection::open(path)?;
-    // Use BLOB for encrypted binary data. If the table was created with TEXT
-    // (legacy schema), migrate it to BLOB to avoid type mismatch issues.
     let schema: Result<String, _> = conn.query_row(
         "SELECT sql FROM sqlite_master WHERE name = 'kv' AND type = 'table'",
         [],
@@ -144,7 +183,6 @@ fn open(path: &PathBuf) -> Result<Connection, DbError> {
     );
     match schema {
         Ok(s) if s.contains("TEXT NOT NULL") && !s.contains("BLOB") => {
-            // Legacy TEXT schema found — migrate to BLOB
             conn.execute_batch(
                 "ALTER TABLE kv RENAME TO kv_old;
                  CREATE TABLE kv (key TEXT PRIMARY KEY, value BLOB NOT NULL);
@@ -153,7 +191,6 @@ fn open(path: &PathBuf) -> Result<Connection, DbError> {
             )?;
         }
         _ => {
-            // BLOB schema already correct, or table doesn't exist yet
             conn.execute_batch(
                 "CREATE TABLE IF NOT EXISTS kv (
                     key TEXT PRIMARY KEY,
@@ -165,11 +202,35 @@ fn open(path: &PathBuf) -> Result<Connection, DbError> {
     Ok(conn)
 }
 
+fn backup_unreadable_db(path: &Path) {
+    if !path.exists() {
+        return;
+    }
+    let backup = path.with_extension("db.unreadable");
+    let _ = std::fs::rename(path, &backup);
+}
+
+fn parse_raw_data(app: &tauri::AppHandle, data: &[u8]) -> Result<AppStateDto, DbError> {
+    if data.starts_with(ENCRYPTED_MAGIC) {
+        let decrypted = decrypt_data(app, data)?;
+        let json_str = String::from_utf8(decrypted)
+            .map_err(|e| DbError::Msg(format!("UTF-8 decode error: {}", e)))?;
+        return Ok(serde_json::from_str(&json_str)?);
+    }
+
+    let json_str = String::from_utf8(data.to_vec())
+        .map_err(|e| DbError::Msg(format!("UTF-8 decode error: {}", e)))?;
+    Ok(serde_json::from_str(&json_str)?)
+}
+
 pub fn load_state(app: &tauri::AppHandle) -> Result<AppStateDto, DbError> {
     let path = db_path(app)?;
-    let conn = open(&path)?;
 
-    // Try reading as BLOB first (current/new format), fall back to TEXT (legacy)
+    if !path.exists() {
+        return Ok(default_state());
+    }
+
+    let conn = open(&path)?;
     let raw: Option<Vec<u8>> = conn
         .query_row(
             "SELECT value FROM kv WHERE key = ?1",
@@ -188,32 +249,25 @@ pub fn load_state(app: &tauri::AppHandle) -> Result<AppStateDto, DbError> {
         });
 
     match raw {
-        Some(data) => {
-            // Detect encrypted format by magic prefix, not by length.
-            // This allows legacy unencrypted JSON (any length) to fall through
-            // to JSON parse without being mistakenly decrypted.
-            if data.starts_with(ENCRYPTED_MAGIC) {
-                match decrypt_data(&data) {
-                    Ok(decrypted) => {
-                        let json_str = String::from_utf8(decrypted)
-                            .map_err(|e| DbError::Msg(format!("UTF-8 decode error: {}", e)))?;
-                        let state: AppStateDto = serde_json::from_str(&json_str)?;
-                        return Ok(state);
-                    }
-                    Err(e) => return Err(e),
-                }
+        Some(data) => match parse_raw_data(app, &data) {
+            Ok(state) => Ok(state),
+            Err(e) => {
+                // Most common cause here: the key on disk no longer matches the
+                // key the data was encrypted with (e.g. the user moved the
+                // .ledger_key file, restored from an old backup, or a previous
+                // build wrote with a different scheme). Log to stderr so the
+                // failure is visible in `tauri dev` / packaged app logs — we
+                // otherwise silently rename the user's data away.
+                eprintln!(
+                    "[db] load_state failed; renaming ledger.db to .unreadable and starting fresh. cause: {}",
+                    e
+                );
+                drop(conn);
+                backup_unreadable_db(&path);
+                Ok(default_state())
             }
-            // Legacy unencrypted format: try raw JSON
-            let json_str = String::from_utf8(data)
-                .map_err(|e| DbError::Msg(format!("UTF-8 decode error: {}", e)))?;
-            let state: AppStateDto = serde_json::from_str(&json_str)?;
-            Ok(state)
-        }
-        None => Ok(AppStateDto {
-            budget: 500.0,
-            rows: vec![],
-            bills: vec![],
-        }),
+        },
+        None => Ok(default_state()),
     }
 }
 
@@ -222,7 +276,7 @@ pub fn save_state(app: &tauri::AppHandle, state: &AppStateDto) -> Result<(), DbE
     let mut conn = open(&path)?;
 
     let json = serde_json::to_string(state)?;
-    let encrypted = encrypt_data(json.as_bytes())?;
+    let encrypted = encrypt_data(app, json.as_bytes())?;
 
     let tx = conn.transaction()?;
     tx.execute(

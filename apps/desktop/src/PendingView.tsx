@@ -5,7 +5,6 @@ import {
   moneyValue,
   renewRow,
   type AppState,
-  type Summary,
   type SubscriptionRow,
 } from "@ai-sub/core";
 import { confirmUnrenewedOrDelete } from "./SubTable";
@@ -15,20 +14,13 @@ type PendingItem = { row: SubscriptionRow; index: number; left: number | null };
 type Props = {
   state: AppState;
   pending: PendingItem[];
-  summary: Summary;
   onCommit: (next: AppState) => void;
   showNotice: (text: string, danger?: boolean) => void;
 };
 
-export function PendingView({ state, pending, summary, onCommit, showNotice }: Props) {
+export function PendingView({ state, pending, onCommit, showNotice }: Props) {
   return (
     <section className="section">
-      <div className="section__head">
-        <h3 className="section__title">待续费</h3>
-        <span className="section__hint">
-          {pending.length} 项 · {summary.pendingFirstPlan ?? "—"} {summary.pendingFirstNote ?? ""}
-        </span>
-      </div>
       <div className="table-card renew-list">
         {pending.map(({ row, index, left }) => (
           <div key={row.id} className="renew-item">

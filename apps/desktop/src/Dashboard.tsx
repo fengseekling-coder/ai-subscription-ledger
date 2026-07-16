@@ -1,3 +1,4 @@
+import { memo, useMemo } from "react";
 import { fmtMoney, setBudget, type AppState, type Summary } from "@ai-sub/core";
 
 type Props = {
@@ -6,13 +7,25 @@ type Props = {
   onCommit: (next: AppState) => void;
 };
 
-export function Dashboard({ state, summary, onCommit }: Props) {
-  const countParts = [`有效 ${summary.activeCount}`];
-  if (summary.expiredCount) countParts.push(`过期 ${summary.expiredCount}`);
-  if (summary.unsubCount) countParts.push(`未订 ${summary.unsubCount}`);
+export const Dashboard = memo(function Dashboard({ state, summary, onCommit }: Props) {
+  const countParts = useMemo(() => {
+    const parts = [`有效 ${summary.activeCount}`];
+    if (summary.expiredCount) parts.push(`过期 ${summary.expiredCount}`);
+    if (summary.unsubCount) parts.push(`未订 ${summary.unsubCount}`);
+    return parts;
+  }, [summary.activeCount, summary.expiredCount, summary.unsubCount]);
 
-  const barClass =
-    summary.monthSpend > summary.budget ? "is-over" : summary.budgetPct >= 85 ? "is-warn" : "";
+  const barClass = useMemo(() => {
+    if (summary.monthSpend > summary.budget) return "is-over";
+    if (summary.budgetPct >= 85) return "is-warn";
+    return "";
+  }, [summary.monthSpend, summary.budget, summary.budgetPct]);
+
+  const nearestValueStyle = useMemo(() => {
+    if (summary.nearestLeft !== null && summary.nearestLeft < 0) return "var(--danger)";
+    if (summary.nearestLeft !== null && summary.nearestLeft <= 3) return "var(--warn)";
+    return undefined;
+  }, [summary.nearestLeft]);
 
   return (
     <div className="dashboard">
@@ -36,14 +49,7 @@ export function Dashboard({ state, summary, onCommit }: Props) {
           <div className="metric__label">下一续费</div>
           <div
             className="metric__value metric__value--sm"
-            style={{
-              color:
-                summary.nearestLeft !== null && summary.nearestLeft < 0
-                  ? "var(--danger)"
-                  : summary.nearestLeft !== null && summary.nearestLeft <= 3
-                    ? "var(--warn)"
-                    : undefined,
-            }}
+            style={{ color: nearestValueStyle }}
           >
             {summary.nearestPlan ?? "—"}
           </div>
@@ -83,7 +89,9 @@ export function Dashboard({ state, summary, onCommit }: Props) {
                 }
               }}
               onKeyDown={(e) => {
-                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                if (e.key === "Enter") {
+                  (e.target as HTMLInputElement).blur();
+                }
               }}
             />
             元
@@ -92,4 +100,4 @@ export function Dashboard({ state, summary, onCommit }: Props) {
       </div>
     </div>
   );
-}
+});

@@ -1,4 +1,15 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  isoToDate,
+  dateToIso,
+  buildCalendarDays,
+  prevMonth as getPrevMonth,
+  nextMonth as getNextMonth,
+  isSameDay,
+  formatDateCN,
+  formatYearMonth,
+  WEEKDAYS_CN,
+} from "./utils/dateUtils";
 
 interface Props {
   value: string; // ISO date string YYYY-MM-DD
@@ -10,23 +21,7 @@ interface Props {
   /** Called when the user closes the picker (controlled mode) */
   onClose?: () => void;
   className?: string;
-}
-
-const MONTHS = [
-  "1月", "2月", "3月", "4月", "5月", "6月",
-  "7月", "8月", "9月", "10月", "11月", "12月",
-];
-
-function isoToDate(iso: string): Date {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
-
-function dateToIso(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${dd}`;
+  placeholder?: string;
 }
 
 export function CalendarPicker({ value, onChange, isOpen: controlledOpen, onOpen, onClose, className }: Props) {
@@ -36,6 +31,7 @@ export function CalendarPicker({ value, onChange, isOpen: controlledOpen, onOpen
   const [viewMonth, setViewMonth] = useState(selected.getMonth());
   const [internalOpen, setInternalOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const toggleLockRef = useRef(false);
 
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
 
@@ -64,6 +60,11 @@ export function CalendarPicker({ value, onChange, isOpen: controlledOpen, onOpen
   }, [open, controlledOpen, onClose]);
 
   function setOpen(o: boolean) {
+    // Prevent rapid toggling race condition
+    if (toggleLockRef.current) return;
+    toggleLockRef.current = true;
+    setTimeout(() => { toggleLockRef.current = false; }, 150);
+
     if (controlledOpen !== undefined) {
       if (o) onOpen?.();
       else onClose?.();
@@ -72,40 +73,19 @@ export function CalendarPicker({ value, onChange, isOpen: controlledOpen, onOpen
     }
   }
 
-  function prevMonth() {
-    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
-    else setViewMonth(m => m - 1);
+  function handlePrevMonth() {
+    const [y, m] = getPrevMonth(viewYear, viewMonth);
+    setViewYear(y);
+    setViewMonth(m);
   }
 
-  function nextMonth() {
-    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
-    else setViewMonth(m => m + 1);
+  function handleNextMonth() {
+    const [y, m] = getNextMonth(viewYear, viewMonth);
+    setViewYear(y);
+    setViewMonth(m);
   }
 
-  function buildDays(): (Date | null)[] {
-    const first = new Date(viewYear, viewMonth, 1);
-    const last = new Date(viewYear, viewMonth + 1, 0);
-    const days: (Date | null)[] = [];
-    for (let i = 0; i < first.getDay(); i++) days.push(null);
-    for (let d = 1; d <= last.getDate(); d++) days.push(new Date(viewYear, viewMonth, d));
-    return days;
-  }
-
-  function isToday(date: Date) {
-    return date.getFullYear() === today.getFullYear()
-      && date.getMonth() === today.getMonth()
-      && date.getDate() === today.getDate();
-  }
-
-  function isSelected(date: Date) {
-    return date.getFullYear() === selected.getFullYear()
-      && date.getMonth() === selected.getMonth()
-      && date.getDate() === selected.getDate();
-  }
-
-  const displayLabel = value
-    ? `${selected.getFullYear()}年${selected.getMonth() + 1}月${selected.getDate()}日`
-    : "选择日期";
+  const displayLabel = value ? formatDateCN(selected) : "选择日期";
 
   return (
     <div ref={wrapperRef} className={`cal-picker${open ? " cal-picker--open" : ""}${className ? " " + className : ""}`}>
@@ -125,26 +105,26 @@ export function CalendarPicker({ value, onChange, isOpen: controlledOpen, onOpen
       {open && (
         <div className="cal-picker__dropdown">
           <div className="cal-picker__nav">
-            <button type="button" className="cal-picker__arrow" onClick={prevMonth}>‹</button>
+            <button type="button" className="cal-picker__arrow" onClick={handlePrevMonth}>‹</button>
             <span className="cal-picker__ym">
-              {viewYear}年{MONTHS[viewMonth]}
+              {formatYearMonth(viewYear, viewMonth)}
             </span>
-            <button type="button" className="cal-picker__arrow" onClick={nextMonth}>›</button>
+            <button type="button" className="cal-picker__arrow" onClick={handleNextMonth}>›</button>
           </div>
 
           <div className="cal-picker__grid">
-            {["日", "一", "二", "三", "四", "五", "六"].map(d => (
+            {WEEKDAYS_CN.map(d => (
               <span key={d} className="cal-picker__dow">{d}</span>
             ))}
-            {buildDays().map((date, i) =>
+            {buildCalendarDays(viewYear, viewMonth).map((date, i) =>
               date ? (
                 <button
                   key={i}
                   type="button"
                   className={[
                     "cal-picker__day",
-                    isToday(date) ? "cal-picker__day--today" : "",
-                    isSelected(date) ? "cal-picker__day--selected" : "",
+                    isSameDay(date, today) ? "cal-picker__day--today" : "",
+                    isSameDay(date, selected) ? "cal-picker__day--selected" : "",
                   ].filter(Boolean).join(" ")}
                   onClick={() => {
                     onChange(dateToIso(date));

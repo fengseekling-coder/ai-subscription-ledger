@@ -3,13 +3,11 @@ import {
   billsForCalendarMonth,
   computeSummary,
   expiredRowEntries,
+  fmtMoney,
   pendingRenewItems,
   pickDueDate,
   sortedBills,
-  subById,
   visibleRowEntries,
-  billMatchesQuery,
-  filterRowEntries,
   type AppState,
 } from "@ai-sub/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -31,6 +29,14 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 type AppMode = "subs" | "expired" | "bills" | "pending" | "stats";
 
+const MODE_TITLES: Record<AppMode, string> = {
+  subs: "订阅列表",
+  stats: "统计",
+  expired: "已过期",
+  bills: "账单",
+  pending: "待续费",
+};
+
 const NEW_SUBSCRIPTION_DRAFT: SubscriptionFormDraft = {
   category: "官方",
   plan: "",
@@ -42,52 +48,130 @@ const NEW_SUBSCRIPTION_DRAFT: SubscriptionFormDraft = {
   expired: false,
 };
 
-export default function App() {
-  const [state, setState] = useState<AppState | null>(null);
-  const [mode, setMode] = useState<AppMode>("subs");
-  const [notice, setNotice] = useState<{ text: string; danger?: boolean } | null>(null);
-  const [editIndex, setEditIndex] = useState<number | null>(null);
-  const [addModalOpen, setAddModalOpen] = useState(false);
-  const [showCatalog, setShowCatalog] = useState(false);
-  const [listQuery, setListQuery] = useState("");
-  const [duePickIndex, setDuePickIndex] = useState<number | null>(null);
+// Custom hook for debounced persistence with flush-on-hide + flush-on-unload
+function useDebouncedPersistence(state: AppState | null) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef<AppState | null>(null);
-  const [notifyOn, setNotifyOn] = useState(localStorage.getItem("ai-sub-notify") === "on");
-  const [isLoading, setIsLoading] = useState(true);
-  const [showSettings, setShowSettings] = useState(false);
-  const [unlocked, setUnlocked] = useState(false);
-  const [lockChecked, setLockChecked] = useState(false);
-  const [pinError, setPinError] = useState("");
-  const [pinInput, setPinInput] = useState("");
   stateRef.current = state;
 
-  // Check app lock on mount; if disabled, unlock immediately
   useEffect(() => {
-    void invoke<boolean>("app_lock_is_enabled").then((enabled) => {
-      if (!enabled) setUnlocked(true);
-      setLockChecked(true);
-    });
+    if (!state) return;
+    
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      persistAppState(state).catch(() => {});
+    }, 200);
+
+    return () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+      }
+    };
+  }, [state]);
+
+  // Flush pending save immediately when the window becomes hidden or the
+  // page is about to unload. Without this, force-kill / OS sleep / immediate
+  // window close within the 200 ms debounce window loses the latest edit.
+  useEffect(() => {
+    const flush = () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+      const current = stateRef.current;
+      if (current) {
+        void persistAppState(current);
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("beforeunload", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("beforeunload", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
 
-  const verifyPin = useCallback(async (pin: string) => {
-    setPinError("");
-    try {
-      const ok = await invoke<boolean>("app_lock_verify_pin", { pin });
-      if (ok) {
-        setUnlocked(true);
-        setPinInput("");
-      } else {
-        setPinError("PIN 错误");
+  // Flush on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current && stateRef.current) {
+        clearTimeout(saveTimer.current);
+        void persistAppState(stateRef.current);
       }
-    } catch {
-      setPinError("验证失败，请重试");
-    }
+    };
   }, []);
+
+  return stateRef;
+}
+
+// Custom hook for tray menu updates
+function useTrayMenu(state: AppState | null, summary: ReturnType<typeof computeSummary> | null) {
+  const trayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!state || !summary) return;
+    
+    const nearest =
+      summary.nearestPlan && summary.nearestDueDate
+        ? `下一续费：${summary.nearestPlan} · ${summary.nearestDueDate}`
+        : "下一续费：—";
+
+    if (trayTimer.current) clearTimeout(trayTimer.current);
+    trayTimer.current = setTimeout(() => {
+      void invoke("update_tray_menu", {
+        pendingCount: summary.pendingRenewCount,
+        nearestLabel: nearest.slice(0, 80),
+      }).catch(() => {});
+    }, 800);
+
+    return () => {
+      if (trayTimer.current) {
+        clearTimeout(trayTimer.current);
+        trayTimer.current = null;
+      }
+    };
+  }, [state, summary]);
+}
+
+// Custom hook for window close handling
+function useWindowCloseHandler(stateRef: React.MutableRefObject<AppState | null>) {
+  useEffect(() => {
+    const w = getCurrentWindow();
+    const unlisten = w.onCloseRequested(async (e) => {
+      const current = stateRef.current;
+      if (current) {
+        e.preventDefault();
+        await persistAppState(current);
+        await w.destroy();
+      }
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [stateRef]);
+}
+
+// Navigation handler hook
+function useNavigation(handler: (mode: AppMode) => void) {
+  useEffect(() => {
+    const unlisten = listen<string>("navigate", (e) => {
+      if (e.payload === "pending") handler("pending");
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [handler]);
+}
+
+// Notice hook
+function useNotice() {
+  const [notice, setNotice] = useState<{ text: string; danger?: boolean } | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showNotice = useCallback((text: string, danger = false) => {
-    // Clear existing notice timer to prevent showing stale notice
     if (noticeTimer.current) {
       clearTimeout(noticeTimer.current);
     }
@@ -98,74 +182,92 @@ export default function App() {
     }, danger ? 8000 : 5000);
   }, []);
 
-  const commit = useCallback(
-    (next: AppState, silent = false) => {
-      setState(next);
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        persistAppState(next).catch(() => {
-          if (!silent) showNotice("保存失败", true);
-        });
-      }, 200);
-    },
-    [showNotice]
-  );
-
   useEffect(() => {
-    if (!unlocked) return;
-    setIsLoading(true);
-    loadAppState()
-      .then((s) => { setState(s); setIsLoading(false); })
-      .catch(() => { setState(null); setIsLoading(false); showNotice("加载数据失败", true); });
-  }, [unlocked, showNotice]);
-
-  useEffect(() => {
-    const unlisten = listen<string>("navigate", (e) => {
-      if (e.payload === "pending") setMode("pending");
-    });
     return () => {
-      void unlisten.then((fn) => fn());
-    };
-  }, []);
-
-  // Flush pending save on window close
-  useEffect(() => {
-    const w = getCurrentWindow();
-    const unlisten = w.onCloseRequested(async (e) => {
-      const current = stateRef.current;
-      if (saveTimer.current && current) {
-        e.preventDefault();
-        clearTimeout(saveTimer.current);
-        saveTimer.current = null;
-        await persistAppState(current);
-        await w.destroy();
+      if (noticeTimer.current) {
+        clearTimeout(noticeTimer.current);
       }
-    });
-    return () => {
-      void unlisten.then((fn) => fn());
     };
   }, []);
 
+  return { notice, showNotice };
+}
+
+export default function App() {
+  // Core state
+  const [state, setState] = useState<AppState | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // UI state
+  const [mode, setMode] = useState<AppMode>("subs");
+  const [editIndex, setEditIndex] = useState<number | null>(null);
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [showCatalog, setShowCatalog] = useState(false);
+  const [duePickIndex, setDuePickIndex] = useState<number | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [notifyOn, setNotifyOn] = useState(localStorage.getItem("ai-sub-notify") === "on");
+  
+  // Hooks
+  const { notice, showNotice } = useNotice();
+  const stateRef = useDebouncedPersistence(state);
+  useWindowCloseHandler(stateRef);
+
+  // Derived state - memoized
   const summary = useMemo(() => (state ? computeSummary(state) : null), [state]);
   const pending = useMemo(() => (state ? pendingRenewItems(state.rows) : []), [state]);
   const bills = useMemo(() => (state ? sortedBills(state) : []), [state]);
-  const filteredBills = useMemo(() => {
-    if (!state) return [];
-    const q = listQuery.trim();
-    if (!q) return bills;
-    return bills.filter((b) => billMatchesQuery(b, subById(state, b.subscriptionId)?.plan ?? "", q));
-  }, [bills, listQuery, state]);
+  
   const subsEntries = useMemo(
-    () => (state ? filterRowEntries(visibleRowEntries(state), listQuery) : []),
-    [state, listQuery]
+    () => (state ? visibleRowEntries(state) : []),
+    [state]
   );
-  const expiredEntries = useMemo(
-    () => (state ? filterRowEntries(expiredRowEntries(state), listQuery) : []),
-    [state, listQuery]
-  );
-  const isEmptyLedger = Boolean(state && state.rows.length === 0 && state.bills.length === 0);
 
+  const expiredEntries = useMemo(
+    () => (state ? expiredRowEntries(state) : []),
+    [state]
+  );
+  
+  const isEmptyLedger = useMemo(
+    () => Boolean(state && state.rows.length === 0 && state.bills.length === 0),
+    [state]
+  );
+
+  // Load data
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    loadAppState()
+      .then((s) => {
+        if (!cancelled) setState(s);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setState(null);
+          showNotice(e instanceof Error ? e.message : "加载数据失败", true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showNotice]);
+
+  // Effects
+  useTrayMenu(state, summary);
+  useNavigation(setMode);
   const { toggleNotify } = useRenewReminders(state, notifyOn, showNotice);
+
+  // Auto-switch from pending if empty
+  useEffect(() => {
+    if (mode === "pending" && pending.length === 0) setMode("subs");
+  }, [mode, pending.length]);
+
+  // Handlers
+  const commit = useCallback((next: AppState) => {
+    setState(next);
+  }, []);
 
   const subHandlers = useMemo(
     () =>
@@ -185,45 +287,17 @@ export default function App() {
     [state, commit, showNotice]
   );
 
-  const trayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (!state || !summary) return;
-    const nearest =
-      summary.nearestPlan && summary.nearestDueDate
-        ? `下一续费：${summary.nearestPlan} · ${summary.nearestDueDate}`
-        : "下一续费：—";
-    if (trayTimer.current) clearTimeout(trayTimer.current);
-    trayTimer.current = setTimeout(() => {
-      void invoke("update_tray_menu", {
-        pendingCount: summary.pendingRenewCount,
-        nearestLabel: nearest.slice(0, 80),
-      }).catch(() => {});
-      trayTimer.current = null;
-    }, 800);
-    return () => {
-      if (trayTimer.current) {
-        clearTimeout(trayTimer.current);
-        trayTimer.current = null;
-      }
-    };
-  }, [state, summary]);
-
-  useEffect(() => {
-    if (mode === "pending" && pending.length === 0) setMode("subs");
-  }, [mode, pending.length]);
-
-  const closeSubModal = () => {
+  const closeSubModal = useCallback(() => {
     setEditIndex(null);
     setAddModalOpen(false);
-  };
+  }, []);
 
-  const openAddSubscription = () => {
+  const openAddSubscription = useCallback(() => {
     setEditIndex(null);
     setAddModalOpen(true);
-  };
+  }, []);
 
-  const confirmDueDate = (iso: string) => {
+  const confirmDueDate = useCallback((iso: string) => {
     if (!state || duePickIndex === null) return;
     const r = pickDueDate(state, duePickIndex, iso);
     setDuePickIndex(null);
@@ -232,9 +306,9 @@ export default function App() {
       return;
     }
     commit(r.state);
-  };
+  }, [state, duePickIndex, commit, showNotice]);
 
-  const handlePrimary = () => {
+  const handlePrimary = useCallback(() => {
     if (!state) return;
     if (mode === "bills") {
       const r = addBill(state);
@@ -247,8 +321,9 @@ export default function App() {
       return;
     }
     openAddSubscription();
-  };
+  }, [state, mode, commit, showNotice, openAddSubscription]);
 
+  // Modal data
   const editRow = editIndex !== null && state ? state.rows[editIndex] : null;
   const subModalMode: "add" | "edit" | null = addModalOpen
     ? "add"
@@ -271,6 +346,7 @@ export default function App() {
           }
         : null;
 
+  // Loading states
   if (isLoading) {
     return (
       <div className="app">
@@ -282,8 +358,21 @@ export default function App() {
   if (state === null) {
     return (
       <div className="app">
-        <div className="loading-screen" style={{ color: "var(--danger)" }}>
-          数据加载失败，请重启应用或检查数据文件。
+        <div className="loading-screen" style={{ color: "var(--danger)", display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
+          <div>数据加载失败，请重启应用或检查数据文件。</div>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => {
+              setIsLoading(true);
+              loadAppState()
+                .then((s) => setState(s))
+                .catch((e) => showNotice(e instanceof Error ? e.message : "加载数据失败", true))
+                .finally(() => setIsLoading(false));
+            }}
+          >
+            重试
+          </button>
         </div>
       </div>
     );
@@ -361,16 +450,23 @@ export default function App() {
         )}
 
         <div className="view-toolbar">
-          {(mode === "subs" || mode === "expired" || mode === "bills") && (
-            <input
-              type="search"
-              className="list-search"
-              placeholder={mode === "bills" ? "搜索账单、订单号、订阅名…" : "搜索套餐、分类、备注…"}
-              value={listQuery}
-              onChange={(e) => setListQuery(e.target.value)}
-              aria-label="搜索"
-            />
-          )}
+          <div className="view-toolbar__left">
+            <h3 className="view-toolbar__title">{MODE_TITLES[mode]}</h3>
+            {mode === "expired" && <span className="section__hint">不计入本月支出</span>}
+            {mode === "stats" && (
+              <span className="section__hint">本月按账单付款日 · 月费为有效订阅标价合计</span>
+            )}
+            {mode === "bills" && (
+              <span className="section__hint">
+                本月 {monthBills.length} 笔 · {fmtMoney(billMonthTotal)} · 全部 {bills.length} 笔 · {fmtMoney(billAllTotal)}
+              </span>
+            )}
+            {mode === "pending" && pending.length > 0 && (
+              <span className="section__hint">
+                {pending.length} 项 · {summary.pendingFirstPlan ?? "—"} {summary.pendingFirstNote ?? ""}
+              </span>
+            )}
+          </div>
           <nav className="seg-nav">
             {(
               [
@@ -393,15 +489,10 @@ export default function App() {
           </nav>
         </div>
 
-        <div className="scroll-tip">表格可左右滑动</div>
-
         {mode === "stats" && <StatsView state={state} />}
 
         {mode === "subs" && subHandlers && (
           <section className="section">
-            <div className="section__head">
-              <h3 className="section__title">订阅列表</h3>
-            </div>
             <div className="table-card">
               <SubTable entries={subsEntries} {...subHandlers} />
             </div>
@@ -410,10 +501,6 @@ export default function App() {
 
         {mode === "expired" && expiredSubHandlers && (
           <section className="section">
-            <div className="section__head">
-              <h3 className="section__title">已过期</h3>
-              <span className="section__hint">不计入本月支出</span>
-            </div>
             <div className="table-card">
               <SubTable entries={expiredEntries} {...expiredSubHandlers} />
             </div>
@@ -421,56 +508,20 @@ export default function App() {
         )}
 
         {mode === "bills" && (
-          <BillsView
-            state={state}
-            bills={bills}
-            filteredBills={filteredBills}
-            monthBillCount={monthBills.length}
-            billMonthTotal={billMonthTotal}
-            billAllTotal={billAllTotal}
-            onCommit={commit}
-          />
+          <BillsView state={state} bills={bills} onCommit={commit} />
         )}
 
         {mode === "pending" && (
           <PendingView
             state={state}
             pending={pending}
-            summary={summary}
             onCommit={commit}
             showNotice={showNotice}
           />
         )}
       </main>
 
-      {/* PIN gate — shown when app lock is enabled and not yet unlocked */}
-      {lockChecked && !unlocked && (
-        <div className="pin-gate">
-          <div className="pin-gate__card">
-            <h2 className="pin-gate__title">🔒 应用已锁定</h2>
-            <p className="pin-gate__desc">输入 PIN 以解锁</p>
-            <input
-              className="pin-gate__input"
-              type="password"
-              placeholder="PIN"
-              value={pinInput}
-              onChange={(e) => { setPinInput(e.target.value); setPinError(""); }}
-              onKeyDown={(e) => { if (e.key === "Enter") verifyPin(pinInput); }}
-              autoFocus
-            />
-            {pinError && <p className="pin-gate__error">{pinError}</p>}
-            <button
-              className="primary"
-              type="button"
-              onClick={() => verifyPin(pinInput)}
-            >
-              解锁
-            </button>
-          </div>
-        </div>
-      )}
-
-      {state && subModalMode && subFormDraft && (
+        {state && subModalMode && subFormDraft && (
         <SubscriptionFormModal
           mode={subModalMode}
           draft={subFormDraft}
@@ -506,7 +557,6 @@ export default function App() {
       )}
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
-
     </div>
   );
 }

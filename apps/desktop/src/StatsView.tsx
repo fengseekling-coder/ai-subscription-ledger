@@ -7,12 +7,7 @@ export function StatsView({ state }: { state: AppState }) {
 
   return (
     <section className="section stats-section">
-      <div className="section__head">
-        <h3 className="section__title">统计</h3>
-        <span className="section__hint">本月按账单付款日 · 月费为有效订阅标价合计</span>
-      </div>
-
-      <div className="stats-grid">
+<div className="stats-grid">
         <div className="table-card">
           <h4 className="stats-subtitle">按分类（本月支出）</h4>
           <table>

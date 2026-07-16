@@ -3,30 +3,12 @@ import { deleteBill, fmtMoney, subById, type AppState, type Bill } from "@ai-sub
 type Props = {
   state: AppState;
   bills: Bill[];
-  filteredBills: Bill[];
-  monthBillCount: number;
-  billMonthTotal: number;
-  billAllTotal: number;
   onCommit: (next: AppState) => void;
 };
 
-export function BillsView({
-  state,
-  bills,
-  filteredBills,
-  monthBillCount,
-  billMonthTotal,
-  billAllTotal,
-  onCommit,
-}: Props) {
+export function BillsView({ state, bills, onCommit }: Props) {
   return (
     <section className="section">
-      <div className="section__head">
-        <h3 className="section__title">账单</h3>
-        <span className="section__hint">
-          本月 {monthBillCount} 笔 · {fmtMoney(billMonthTotal)} · 全部 {bills.length} 笔 · {fmtMoney(billAllTotal)}
-        </span>
-      </div>
       <div className="table-card">
         <table>
           <thead>
@@ -40,7 +22,7 @@ export function BillsView({
             </tr>
           </thead>
           <tbody>
-            {filteredBills.map((bill) => {
+            {bills.map((bill) => {
               const sub = subById(state, bill.subscriptionId);
               return (
                 <tr key={bill.id}>

@@ -1,13 +1,15 @@
 import {
   addRowWithDetails,
   deleteRow,
+  moneyValue,
   normalizeBill,
-  normalizeDateInput,
+  normalizeEnglishMonthDate,
   runConnectorPaste,
   subById,
   subscribeNoticeAfterToggle,
   todayLocalISO,
   updateRow,
+  validateDateInput,
   type AppState,
   type SubscriptionRow,
 } from "@ai-sub/core";
@@ -28,7 +30,11 @@ export type SubscriptionFormDraft = {
 };
 
 /** 从解析结果提取表单字段值，autoMatch 为 true 时自动匹配已有订阅 */
-function extractFields(raw: string, stateRows: AppState["rows"], autoMatch: boolean = false): {
+function extractFields(
+  raw: string,
+  stateRows: AppState["rows"],
+  autoMatch: boolean = false
+): {
   plan?: string;
   fee?: string;
   usage?: string;
@@ -37,7 +43,15 @@ function extractFields(raw: string, stateRows: AppState["rows"], autoMatch: bool
   matchedSubId?: string;
   matchedPlan?: string;
 } {
-  const out: { plan?: string; fee?: string; usage?: string; subscribedAt?: string; category?: string; matchedSubId?: string; matchedPlan?: string } = {};
+  const out: {
+    plan?: string;
+    fee?: string;
+    usage?: string;
+    subscribedAt?: string;
+    category?: string;
+    matchedSubId?: string;
+    matchedPlan?: string;
+  } = {};
 
   // 尝试 JSON
   try {
@@ -70,32 +84,52 @@ function extractFields(raw: string, stateRows: AppState["rows"], autoMatch: bool
   }
 
   // 直接正则补充
-  const amtM = raw.match(/[¥￥]\s*(\d+(?:\.\d+)?)/);
+  const amtM = raw.match(/\$\s*(\d+(?:\.\d+)?)/) || raw.match(/[¥￥]\s*(\d+(?:\.\d+)?)/);
   if (amtM && !out.fee) out.fee = amtM[1];
 
-  const dateM = raw.match(/(\d{4}-\d{2}-\d{2})/);
-  if (dateM && !out.subscribedAt) out.subscribedAt = dateM[1];
+  // 日期匹配：YYYY-MM-DD, MM/DD/YYYY, 16 Jul 2026 / Jul 16 2026
+  if (!out.subscribedAt) {
+    const iso = raw.match(/(\d{4}-\d{2}-\d{2})/)?.[1];
+    if (iso) {
+      out.subscribedAt = iso;
+    } else {
+      const slash = raw.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      if (slash) {
+        out.subscribedAt = `${slash[3]}-${slash[1]}-${slash[2]}`;
+      } else {
+        const word = normalizeEnglishMonthDate(raw);
+        if (word) out.subscribedAt = word;
+      }
+    }
+  }
 
-  // 自动匹配已有订阅（仅在 autoMatch=true 时）
+  // 提取套餐名（更宽松的匹配）
+  if (!out.plan) {
+    const planM =
+      raw.match(/LAX\.AS\d+\.Pro\.Pocket/i) ||
+      raw.match(/LAX\.AS\d+\.Pro/i) ||
+      raw.match(/LAX\.AS\d+/i) ||
+      raw.match(/Pro\.Pocket/i) ||
+      raw.match(/(DMIT-[A-Za-z0-9-]+)/i);
+    if (planM) out.plan = planM[0].trim();
+  }
+
+  // 自动匹配已有订阅
   if (autoMatch && out.plan && stateRows) {
     const planLower = out.plan.toLowerCase();
-    // 优先匹配：精确匹配 > 包含匹配 > 部分匹配
     const exactMatch = stateRows.find(
       (r) => r.plan.toLowerCase() === planLower && r.subscribed
     );
     if (exactMatch) {
       out.matchedSubId = exactMatch.id;
       out.matchedPlan = exactMatch.plan;
-      // 如果没有明确解析出分类（默认分类是"官方"），使用匹配到的订阅分类
       if (!out.category || out.category === "官方") {
         out.category = exactMatch.category;
       }
-      // 如果没有解析出金额，使用订阅的金额
       if (!out.fee) {
         out.fee = exactMatch.fee;
       }
     } else {
-      // 模糊匹配：OCR 文本中包含订阅名称的一部分
       const partialMatch = stateRows.find(
         (r) =>
           r.subscribed &&
@@ -126,7 +160,6 @@ export function SubscriptionFormModal({
   editRow,
   onClose,
   onCommit,
-  onNotice,
 }: {
   mode: "add" | "edit";
   draft: SubscriptionFormDraft;
@@ -142,13 +175,30 @@ export function SubscriptionFormModal({
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [ocrLoading, setOcrLoading] = useState(false);
-  const [matchedSub, setMatchedSub] = useState<{ id: string; plan: string } | null>(null);
+  const [modalNotice, setModalNotice] = useState<{ text: string; danger?: boolean } | null>(null);
+  const modalNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showModalNotice = (text: string, danger = false) => {
+    if (modalNoticeTimer.current) clearTimeout(modalNoticeTimer.current);
+    setModalNotice({ text, danger });
+    modalNoticeTimer.current = setTimeout(() => {
+      setModalNotice(null);
+      modalNoticeTimer.current = null;
+    }, danger ? 8000 : 5000);
+  };
+  const [matchedSub, setMatchedSub] = useState<{
+    id: string;
+    plan: string;
+  } | null>(null);
   const [subDate, setSubDate] = useState(draft.subscribedAt);
   const [dueDate, setDueDate] = useState(draft.dueDate);
-  /** "sub" | "due" | null — tracks which calendar picker is currently open */
   const [pickerOpen, setPickerOpen] = useState<"sub" | "due" | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [dateErrors, setDateErrors] = useState<{
+    subscribedAt?: string;
+    dueDate?: string;
+  }>({});
+  const [feeError, setFeeError] = useState<string | null>(null);
 
-  // Reset matchedSub when modal opens (form key changes)
   useEffect(() => {
     setMatchedSub(null);
   }, [mode, editIndex]);
@@ -159,47 +209,49 @@ export function SubscriptionFormModal({
       const img = await readImage();
       const [size, rgba] = await Promise.all([img.size(), img.rgba()]);
       if (size.width === 0 || size.height === 0) {
-        onNotice("剪贴板无图片", true);
+        showModalNotice("剪贴板无图片", true);
         return;
       }
-      // 把 RGBA 数据转成 PNG 传给 Rust OCR
       const ocrText = await invoke<string>("ocr_image", {
         data: Array.from(rgba),
         width: size.width,
         height: size.height,
       });
       if (ocrText) {
-        // 自动匹配订阅
         const fields = extractFields(ocrText, state.rows, true);
         if (fields.matchedSubId && fields.matchedPlan) {
-          // 找到匹配订阅，自动填充并提示
           setPasteText(ocrText);
           setMatchedSub({ id: fields.matchedSubId, plan: fields.matchedPlan });
-          // 如果解析到分类或金额，也填入表单
           if (fields.category) {
-            const el = formRef.current?.elements.namedItem("category") as HTMLSelectElement | null;
+            const el = formRef.current?.elements.namedItem(
+              "category"
+            ) as HTMLSelectElement | null;
             if (el) el.value = fields.category;
           }
           if (fields.fee) {
-            const el = formRef.current?.elements.namedItem("fee") as HTMLInputElement | null;
+            const el = formRef.current?.elements.namedItem(
+              "fee"
+            ) as HTMLInputElement | null;
             if (el) el.value = fields.fee;
           }
           if (fields.subscribedAt) {
             setSubDate(fields.subscribedAt);
           }
-          onNotice(`已自动匹配订阅「${fields.matchedPlan}」，确认后将为该订阅添加账单`);
+          showModalNotice(
+            `已自动匹配订阅「${fields.matchedPlan}」，确认后将为该订阅添加账单`
+          );
         } else {
-          // 未匹配，显示解析结果让用户手动选择
           setPasteText(ocrText);
           setMatchedSub(null);
-          onNotice("未匹配到已有订阅，请手动选择或新建");
+          showModalNotice("未匹配到已有订阅，请手动选择或新建");
         }
       } else {
-        onNotice("未识别到文字", true);
+        showModalNotice("未识别到文字", true);
       }
-    } catch (e) {
-      console.error("OCR error:", e);
-      onNotice("图片识别失败", true);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("OCR error:", msg);
+      showModalNotice(`图片识别失败: ${msg}`, true);
     } finally {
       setOcrLoading(false);
     }
@@ -221,261 +273,530 @@ export function SubscriptionFormModal({
   const applyPaste = () => {
     if (!pasteText.trim() || !formRef.current) return;
     const fields = extractFields(pasteText, state.rows);
+    console.log("[OCR Debug] raw text:", pasteText.slice(0, 200));
+    console.log("[OCR Debug] extracted fields:", fields);
     const form = formRef.current;
     let filled = 0;
 
     if (fields.plan) {
       const el = form.elements.namedItem("plan") as HTMLInputElement | null;
-      if (el && !el.value) { el.value = fields.plan; filled++; }
+      if (el && !el.value) {
+        el.value = fields.plan;
+        filled++;
+      }
     }
     if (fields.fee) {
       const el = form.elements.namedItem("fee") as HTMLInputElement | null;
-      if (el && !el.value) { el.value = fields.fee; filled++; }
+      if (el && !el.value) {
+        el.value = fields.fee;
+        filled++;
+      }
     }
     if (fields.usage) {
       const el = form.elements.namedItem("usage") as HTMLTextAreaElement | null;
-      if (el && !el.value) { el.value = fields.usage; filled++; }
+      if (el && !el.value) {
+        el.value = fields.usage;
+        filled++;
+      }
     }
     if (fields.subscribedAt) {
-      const el = form.elements.namedItem("subscribedAt") as HTMLInputElement | null;
-      if (el && !el.value) { el.value = fields.subscribedAt; filled++; }
+      const el = form.elements.namedItem(
+        "subscribedAt"
+      ) as HTMLInputElement | null;
+      if (el && !el.value) {
+        el.value = fields.subscribedAt;
+        setSubDate(fields.subscribedAt);
+        filled++;
+      }
     }
     if (fields.category) {
       const el = form.elements.namedItem("category") as HTMLSelectElement | null;
-      if (el) { el.value = fields.category; filled++; }
+      if (el) {
+        el.value = fields.category;
+        filled++;
+      }
     }
 
     if (filled > 0) {
-      onNotice(`已填充 ${filled} 个字段`);
+      showModalNotice(`已填充 ${filled} 个字段`);
       setPasteText("");
       setPasteOpen(false);
+      setDateErrors({});
     } else {
-      onNotice("未识别到可填充的字段", true);
+      showModalNotice("未识别到可填充的字段", true);
+    }
+  };
+
+  const handleSubDateChange = (value: string) => {
+    setSubDate(value);
+    const result = validateDateInput(value);
+    setDateErrors((prev) => ({
+      ...prev,
+      subscribedAt: result.valid ? undefined : result.message,
+    }));
+  };
+
+  const handleDueDateChange = (value: string) => {
+    setDueDate(value);
+    const result = validateDateInput(value);
+    setDateErrors((prev) => ({
+      ...prev,
+      dueDate: result.valid ? undefined : result.message,
+    }));
+  };
+
+  const handleFeeBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const value = e.target.value.trim();
+    if (value) {
+      const num = moneyValue(value);
+      if (num < 0 || isNaN(num)) {
+        setFeeError("金额格式无效");
+      } else {
+        setFeeError(null);
+      }
+    } else {
+      setFeeError(null);
     }
   };
 
   return (
-    <div className="modal modal--sub-form" role="dialog" aria-modal="true" aria-labelledby="sub-form-modal-title">
-      <div className="modal__backdrop" onClick={onClose} />
-      <div className="modal__panel" onClick={(e) => e.stopPropagation()}>
-        <div className="modal__head">
-          <h2 id="sub-form-modal-title" className="modal__title">
+    <div
+      className="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
+    >
+      <div className="modal-panel">
+        {/* Header */}
+        <div className="modal-header">
+          <h2 id="modal-title" className="modal-title">
             {isAdd ? "新增订阅" : "编辑订阅"}
           </h2>
-          <button type="button" className="modal__close" aria-label="关闭" onClick={onClose}>
+          <button
+            type="button"
+            className="modal-close"
+            aria-label="关闭"
+            onClick={onClose}
+          >
             ×
           </button>
         </div>
-        <form
-          ref={formRef}
-          key={isAdd ? "add" : `edit-${editIndex}`}
-          className="modal__body"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const fd = new FormData(e.currentTarget);
-            const subRaw = String(fd.get("subscribedAt") ?? "");
-            const dueRaw = String(fd.get("dueDate") ?? "");
-            const subIso = normalizeDateInput(subRaw);
-            const dueIso = normalizeDateInput(dueRaw);
-            if (subIso === null) {
-              onNotice("订阅日期格式请使用 YYYY-MM-DD", true);
-              return;
-            }
-            if (dueIso === null) {
-              onNotice("续费日期格式请使用 YYYY-MM-DD", true);
-              return;
-            }
-            const category = String(fd.get("category") ?? "").trim();
-            const plan = String(fd.get("plan") ?? "").trim();
-            if (!category) {
-              onNotice("请选择分类", true);
-              return;
-            }
-            if (!plan) {
-              onNotice("请填写套餐名称", true);
-              return;
-            }
-            const patch = {
-              category,
-              plan,
-              fee: String(fd.get("fee") ?? "").trim(),
-              subscribedAt: subIso,
-              dueDate: dueIso,
-              usage: String(fd.get("usage") ?? "").trim(),
-              subscribed: fd.get("subscribed") === "on",
-              expired: fd.get("expired") === "on",
-            };
-            // 如果 OCR 匹配到了订阅，直接添加账单而不是新建订阅
-            if (matchedSub && isAdd) {
-              const matched = subById(state, matchedSub.id);
-              if (matched) {
-                // 获取表单中的金额（优先使用表单值，否则用订阅原价）
-                const amount = String(fd.get("fee") ?? "").trim() || matched.fee;
-                const note = String(fd.get("usage") ?? "").trim();
-                // 使用本地时间而非 UTC
-                const paidAt = subIso || todayLocalISO();
-                // 直接添加账单到匹配的订阅
-                const newBill = normalizeBill({
-                  subscriptionId: matched.id,
-                  amount: parseFloat(amount) || 0,
-                  paidAt,
-                  orderId: "",
-                  note,
-                  kind: "payment",
-                });
-                onCommit({ ...state, bills: [...state.bills, newBill] });
-                onClose();
-                onNotice(`已为「${matched.plan}」添加账单 ${amount} 元`);
+
+        {/* Body */}
+        <div className="modal-body">
+          <form
+            ref={formRef}
+            id="sub-form"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (isSubmitting) return;
+              setIsSubmitting(true);
+
+              const fd = new FormData(e.currentTarget);
+              const subRaw = String(fd.get("subscribedAt") ?? "");
+              const dueRaw = String(fd.get("dueDate") ?? "");
+
+              const subValidation = validateDateInput(subRaw);
+              const dueValidation = validateDateInput(dueRaw);
+
+              if (!subValidation.valid) {
+                showModalNotice(
+                  subValidation.message || "订阅日期格式无效",
+                  true
+                );
+                setDateErrors((prev) => ({
+                  ...prev,
+                  subscribedAt: subValidation.message,
+                }));
+                setIsSubmitting(false);
                 return;
               }
-            }
-            if (isAdd) {
-              const r = addRowWithDetails(state, patch);
-              if ("error" in r) {
-                onNotice(r.error, true);
+              if (!dueValidation.valid) {
+                showModalNotice(
+                  dueValidation.message || "续费日期格式无效",
+                  true
+                );
+                setDateErrors((prev) => ({
+                  ...prev,
+                  dueDate: dueValidation.message,
+                }));
+                setIsSubmitting(false);
                 return;
               }
-              onCommit(r);
-              onClose();
-              onNotice("已添加订阅");
-              const idx = r.rows.length - 1;
-              const msg = subscribeNoticeAfterToggle(r, idx);
-              if (msg) onNotice(msg);
-            } else if (editIndex !== null) {
-              const result = updateRow(state, editIndex, patch);
-              if ("error" in result) {
-                onNotice(result.error, true);
+
+              const category = String(fd.get("category") ?? "").trim();
+              const plan = String(fd.get("plan") ?? "").trim();
+              const fee = String(fd.get("fee") ?? "").trim();
+
+              if (!category) {
+                showModalNotice("请选择分类", true);
+                setIsSubmitting(false);
                 return;
               }
-              onCommit(result);
-              onClose();
-              onNotice("已保存");
-            }
-          }}
-        >
-          {isAdd && (
-            <div className="paste-quickfill">
-              <button
-                type="button"
-                className="paste-quickfill__toggle"
-                onClick={() => setPasteOpen(!pasteOpen)}
-              >
-                {pasteOpen ? "▼" : "▶"} 粘贴快速填充
-              </button>
-              {pasteOpen && (
-                <div className="paste-quickfill__body">
-                  <textarea
-                    rows={3}
-                    placeholder="粘贴订单文本、邮件内容、短信…&#10;如：订单 HS123 · 2026-07-05 · ¥140"
-                    value={pasteText}
-                    onChange={(e) => setPasteText(e.target.value)}
-                  />
-                  <div className="paste-quickfill__actions">
-                    <button type="button" className="paste-quickfill__btn" onClick={applyPaste}>
-                      解析文字
-                    </button>
-                    <button
-                      type="button"
-                      className="paste-quickfill__btn paste-quickfill__btn--secondary"
-                      onClick={handlePasteImage}
-                      disabled={ocrLoading}
-                    >
-                      {ocrLoading ? "识别中…" : "📷 粘贴图片 OCR"}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          <div className="form-field">
-            <label>分类</label>
-            <select name="category" defaultValue={draft.category}>
-              <option value="官方">官方</option>
-              <option value="中转">中转</option>
-              <option value="中转额度包">中转额度包</option>
-              <option value="其他">其他</option>
-            </select>
-          </div>
-          <div className="form-field">
-            <label>套餐 / 额度</label>
-            <input name="plan" required defaultValue={draft.plan} autoComplete="off" autoFocus={isAdd} />
-          </div>
-          <div className="form-row">
-            <div className="form-field">
-              <label>月费</label>
-              <input name="fee" defaultValue={draft.fee} autoComplete="off" />
-            </div>
-          </div>
-          <div className="form-row">
-            <div className="form-field">
-              <label>订阅日期</label>
-              <input type="hidden" name="subscribedAt" value={subDate} />
-              <CalendarPicker
-                value={subDate}
-                onChange={setSubDate}
-                isOpen={pickerOpen === "sub"}
-                onOpen={() => setPickerOpen("sub")}
-                onClose={() => setPickerOpen(null)}
-              />
-            </div>
-            <div className="form-field">
-              <label>续费日期</label>
-              <input type="hidden" name="dueDate" value={dueDate} />
-              <CalendarPicker
-                value={dueDate}
-                onChange={setDueDate}
-                isOpen={pickerOpen === "due"}
-                onOpen={() => setPickerOpen("due")}
-                onClose={() => setPickerOpen(null)}
-              />
-            </div>
-          </div>
-          <div className="form-field">
-            <label>备注</label>
-            <textarea name="usage" defaultValue={draft.usage} rows={3} />
-          </div>
-          <label className="form-check">
-            <input type="checkbox" name="subscribed" defaultChecked={draft.subscribed} />
-            已订阅
-          </label>
-          {draft.subscribed && (
-            <label className="form-check">
-              <input type="checkbox" name="expired" defaultChecked={draft.expired} />
-              标记为已过期
-            </label>
-          )}
-          <div className="modal__foot">
-            {!isAdd && editRow && editIndex !== null ? (
-              <button
-                type="button"
-                className="danger-text"
-                onClick={() => {
-                  if (!confirm(`确定删除「${editRow.plan}」？`)) return;
-                  const result = deleteRow(state, editIndex);
-                  if ("error" in result) {
-                    onNotice(result.error, true);
-                    return;
-                  }
-                  onCommit(result);
+              if (!plan) {
+                showModalNotice("请填写套餐名称", true);
+                setIsSubmitting(false);
+                return;
+              }
+              if (fee) {
+                const feeNum = moneyValue(fee);
+                if (feeNum < 0 || isNaN(feeNum)) {
+                  showModalNotice("金额格式无效", true);
+                  setFeeError("金额格式无效");
+                  setIsSubmitting(false);
+                  return;
+                }
+              }
+
+              const patch = {
+                category,
+                plan,
+                fee,
+                subscribedAt: subValidation.normalized ?? "",
+                dueDate: dueValidation.normalized ?? "",
+                usage: String(fd.get("usage") ?? "").trim(),
+                subscribed: fd.get("subscribed") === "on",
+                expired: fd.get("expired") === "on",
+              };
+
+              // OCR 匹配：直接添加账单
+              if (matchedSub && isAdd) {
+                const matched = subById(state, matchedSub.id);
+                if (matched) {
+                  const formFee = String(fd.get("fee") ?? "").trim();
+                  const parsedFee = formFee ? moneyValue(formFee) : 0;
+                  const amount =
+                    parsedFee > 0 ? parsedFee : moneyValue(matched.fee);
+                  const note = String(fd.get("usage") ?? "").trim();
+                  const paidAt =
+                    subValidation.normalized || todayLocalISO();
+                  const newBill = normalizeBill({
+                    subscriptionId: matched.id,
+                    amount,
+                    paidAt,
+                    orderId: "",
+                    note,
+                    kind: "payment",
+                  });
+                  onCommit({ ...state, bills: [...state.bills, newBill] });
                   onClose();
-                  onNotice("已删除。");
+                  showModalNotice(
+                    `已为「${matched.plan}」添加账单 ${amount} 元`
+                  );
+                  setIsSubmitting(false);
+                  return;
+                }
+              }
+
+              if (isAdd) {
+                const r = addRowWithDetails(state, patch);
+                if ("error" in r) {
+                  showModalNotice(r.error, true);
+                  setIsSubmitting(false);
+                  return;
+                }
+                onCommit(r);
+                onClose();
+                showModalNotice("已添加订阅");
+                const idx = r.rows.length - 1;
+                const msg = subscribeNoticeAfterToggle(r, idx);
+                if (msg) showModalNotice(msg);
+              } else if (editIndex !== null) {
+                const result = updateRow(state, editIndex, patch);
+                if ("error" in result) {
+                  showModalNotice(result.error, true);
+                  setIsSubmitting(false);
+                  return;
+                }
+                onCommit(result);
+                onClose();
+                showModalNotice("已保存");
+              }
+
+              setIsSubmitting(false);
+            }}
+          >
+            {/* Paste Quick Fill */}
+            {isAdd && (
+              <div
+                style={{
+                  marginBottom: 24,
+                  border: "1px dashed var(--color-text-tertiary)",
+                  borderRadius: 12,
+                  overflow: "hidden",
                 }}
               >
-                删除此条
-              </button>
-            ) : (
-              <span />
+                <button
+                  type="button"
+                  onClick={() => setPasteOpen(!pasteOpen)}
+                  style={{
+                    width: "100%",
+                    padding: "12px 16px",
+                    background: "transparent",
+                    border: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    cursor: "pointer",
+                    fontSize: 15,
+                    fontWeight: 500,
+                    color: "var(--color-text-primary)",
+                  }}
+                >
+                  <span>📋 粘贴快速填充</span>
+                  <span
+                    style={{
+                      transform: pasteOpen ? "rotate(180deg)" : "none",
+                      transition: "transform 0.2s ease",
+                    }}
+                  >
+                    ▼
+                  </span>
+                </button>
+                {pasteOpen && (
+                  <div style={{ padding: "0 16px 16px" }}>
+                    <textarea
+                      rows={3}
+                      placeholder="粘贴订单文本、邮件内容、短信..."
+                      value={pasteText}
+                      onChange={(e) => setPasteText(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: 12,
+                        fontSize: 14,
+                        borderRadius: 8,
+                        border: "1px solid var(--color-surface-secondary)",
+                        background: "var(--color-surface-secondary)",
+                        marginBottom: 12,
+                        resize: "vertical",
+                        fontFamily: "inherit",
+                      }}
+                    />
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 12,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        className="btn btn--secondary btn--sm"
+                        onClick={applyPaste}
+                      >
+                        解析文字
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--ghost btn--sm"
+                        onClick={handlePasteImage}
+                        disabled={ocrLoading}
+                      >
+                        {ocrLoading ? "识别中..." : "📷 粘贴图片 OCR"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
-            <div className="modal__foot-actions">
-              <button type="button" onClick={onClose}>
-                取消
-              </button>
-              <button type="submit" className="primary">
-                {isAdd ? "添加" : "保存"}
-              </button>
+
+            {/* Category */}
+            <div className="form-field" style={{ marginBottom: 20 }}>
+              <label>分类</label>
+              <select
+                name="category"
+                defaultValue={draft.category}
+                className="select"
+              >
+                <option value="官方">官方</option>
+                <option value="中转">中转</option>
+                <option value="中转额度包">中转额度包</option>
+                <option value="其他">其他</option>
+              </select>
             </div>
+
+            {/* Plan Name */}
+            <div className="form-field" style={{ marginBottom: 20 }}>
+              <label>套餐 / 额度</label>
+              <input
+                name="plan"
+                required
+                defaultValue={draft.plan}
+                autoComplete="off"
+                autoFocus={isAdd}
+                className="input"
+                placeholder="例如：ChatGPT Plus"
+              />
+            </div>
+
+            {/* Fee */}
+            <div className="form-field" style={{ marginBottom: 20 }}>
+              <label>月费</label>
+              <input
+                name="fee"
+                defaultValue={draft.fee}
+                autoComplete="off"
+                onBlur={handleFeeBlur}
+                placeholder="例如：29.9"
+                className="input"
+              />
+              {feeError && (
+                <span
+                  style={{
+                    color: "var(--color-danger)",
+                    fontSize: 13,
+                    marginTop: 4,
+                  }}
+                >
+                  {feeError}
+                </span>
+              )}
+            </div>
+
+            {/* Date Row */}
+            <div className="form-row" style={{ marginBottom: 20 }}>
+              <div className="form-field" style={{ position: "relative" }}>
+                <label>订阅日期</label>
+                <input type="hidden" name="subscribedAt" value={subDate} />
+                <CalendarPicker
+                  value={subDate}
+                  onChange={handleSubDateChange}
+                  isOpen={pickerOpen === "sub"}
+                  onOpen={() =>
+                    setPickerOpen((prev) => (prev === "sub" ? null : "sub"))
+                  }
+                  onClose={() => setPickerOpen(null)}
+                />
+                {dateErrors.subscribedAt && (
+                  <span
+                    style={{
+                      color: "var(--color-danger)",
+                      fontSize: 13,
+                      marginTop: 4,
+                    }}
+                  >
+                    {dateErrors.subscribedAt}
+                  </span>
+                )}
+              </div>
+              <div className="form-field" style={{ position: "relative" }}>
+                <label>续费日期</label>
+                <input type="hidden" name="dueDate" value={dueDate} />
+                <CalendarPicker
+                  value={dueDate}
+                  onChange={handleDueDateChange}
+                  isOpen={pickerOpen === "due"}
+                  onOpen={() =>
+                    setPickerOpen((prev) => (prev === "due" ? null : "due"))
+                  }
+                  onClose={() => setPickerOpen(null)}
+                />
+                {dateErrors.dueDate && (
+                  <span
+                    style={{
+                      color: "var(--color-danger)",
+                      fontSize: 13,
+                      marginTop: 4,
+                    }}
+                  >
+                    {dateErrors.dueDate}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Usage */}
+            <div className="form-field" style={{ marginBottom: 20 }}>
+              <label>备注</label>
+              <textarea
+                name="usage"
+                defaultValue={draft.usage}
+                rows={3}
+                className="textarea"
+                placeholder="可选：添加备注信息"
+              />
+            </div>
+
+            {/* Checkboxes */}
+            <div style={{ marginBottom: 16 }}>
+              <label className="toggle">
+                <input
+                  type="checkbox"
+                  name="subscribed"
+                  defaultChecked={draft.subscribed}
+                />
+                已订阅
+              </label>
+            </div>
+
+            {draft.subscribed && (
+              <div style={{ marginBottom: 16 }}>
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    name="expired"
+                    defaultChecked={draft.expired}
+                  />
+                  标记为已过期
+                </label>
+              </div>
+            )}
+          </form>
+          {modalNotice && (
+            <div className={`modal-notice ${modalNotice.danger ? "danger" : ""}`}>
+              {modalNotice.text}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="modal-footer">
+          {!isAdd && editRow && editIndex !== null ? (
+            <button
+              type="button"
+              className="btn btn--danger"
+              onClick={() => {
+                if (!confirm(`确定删除「${editRow.plan}」？`)) return;
+                const result = deleteRow(state, editIndex);
+                if ("error" in result) {
+                  showModalNotice(result.error, true);
+                  return;
+                }
+                onCommit(result);
+                onClose();
+                showModalNotice("已删除");
+              }}
+            >
+              删除
+            </button>
+          ) : (
+            <span />
+          )}
+          <div className="modal-footer--end" style={{ gap: 12 }}>
+            <button
+              type="button"
+              className="btn btn--secondary"
+              onClick={onClose}
+              disabled={isSubmitting}
+            >
+              取消
+            </button>
+            <button
+              type="submit"
+              form="sub-form"
+              className="btn btn--primary"
+              disabled={isSubmitting}
+            >
+              {isSubmitting
+                ? isAdd
+                  ? "添加中..."
+                  : "保存中..."
+                : isAdd
+                ? "添加"
+                : "保存"}
+            </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );
