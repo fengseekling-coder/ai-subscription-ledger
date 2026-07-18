@@ -173,7 +173,7 @@ function useNotice() {
     noticeTimer.current = window.setTimeout(() => {
       setNotice(null);
       noticeTimer.current = null;
-    }, danger ? 8000 : 5000);
+    }, danger ? 5000 : 1600);
   }, []);
 
   useEffect(() => {

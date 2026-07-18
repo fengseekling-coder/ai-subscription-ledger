@@ -311,16 +311,24 @@ button.danger-text { background: transparent; color: var(--danger); padding: 8px
 .notice.danger { background: var(--danger-soft); color: var(--danger-text); }
 
 .toast {
-  position: fixed; top: calc(var(--topbar-h) + var(--space-4)); left: 50%;
+  position: fixed; top: calc(var(--topbar-h) + var(--space-3)); left: 50%;
   transform: translateX(-50%); z-index: 90;
-  max-width: min(420px, calc(100vw - 32px));
-  padding: var(--space-3) var(--space-5);
-  background: var(--text); color: #fff;
-  border-radius: var(--radius-lg); box-shadow: var(--shadow-md);
-  font-size: var(--text-sm); font-weight: 500;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-secondary);
+  border: 0.5px solid var(--line);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: saturate(180%) blur(12px);
+  font-size: var(--text-xs); font-weight: 500;
   pointer-events: none;
 }
-.toast.danger { background: var(--danger); color: #fff; }
+.toast.danger {
+  background: var(--danger-soft);
+  color: var(--danger-text);
+  border-color: transparent;
+}
 
 .view-toolbar {
   margin-bottom: var(--space-3);
