@@ -7,6 +7,7 @@ import {
   type CatalogSegment,
 } from "@ai-sub/core";
 import { useMemo, useState } from "react";
+import { ModalCloseButton } from "./ui/Icon";
 
 const SEGMENTS: { id: CatalogSegment | "all"; label: string }[] = [
   { id: "all", label: "全部" },
@@ -59,9 +60,7 @@ export function CatalogModal({
           <h2 id="catalog-title" className="modal__title">
             服务库
           </h2>
-          <button type="button" className="modal__close" aria-label="关闭" onClick={onClose}>
-            ×
-          </button>
+          <ModalCloseButton onClick={onClose} />
         </div>
         <div className="catalog-toolbar">
           <input

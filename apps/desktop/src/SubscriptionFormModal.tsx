@@ -17,6 +17,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { readImage } from "@tauri-apps/plugin-clipboard-manager";
 import { useEffect, useRef, useState } from "react";
 import { CalendarPicker } from "./CalendarPicker";
+import { resolveLang, tFor } from "./i18n";
+import { Icon, ModalCloseButton } from "./ui/Icon";
 
 export type SubscriptionFormDraft = {
   category: string;
@@ -29,6 +31,13 @@ export type SubscriptionFormDraft = {
   expired: boolean;
 };
 
+const CATEGORY_OPTIONS = [
+  { value: "官方", label: "官方" },
+  { value: "中转", label: "中转" },
+  { value: "中转额度包", label: "额度" },
+  { value: "其他", label: "其他" },
+] as const;
+
 /** 从解析结果提取表单字段值，autoMatch 为 true 时自动匹配已有订阅 */
 function extractFields(
   raw: string,
@@ -39,6 +48,7 @@ function extractFields(
   fee?: string;
   usage?: string;
   subscribedAt?: string;
+  dueDate?: string;
   category?: string;
   matchedSubId?: string;
   matchedPlan?: string;
@@ -48,10 +58,35 @@ function extractFields(
     fee?: string;
     usage?: string;
     subscribedAt?: string;
+    dueDate?: string;
     category?: string;
     matchedSubId?: string;
     matchedPlan?: string;
   } = {};
+
+  // {ft.form.dates}范围：优先解析，connector 的条件判断不会覆盖已填字段
+  const parseDateStr = (raw: string): string | null => {
+    // 明确的 MM/DD/YYYY（避免整段文本去非数字后位数 > 8 时漏匹配）
+    const slash = raw.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (slash) {
+      return `${slash[3]}-${slash[1]}-${slash[2]}`;
+    }
+    // 纯 8 位数字片段：MMDDYYYY
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length === 8) {
+      return `${digits.slice(4, 8)}-${digits.slice(0, 2)}-${digits.slice(2, 4)}`;
+    }
+    // ISO 格式兜底
+    const iso = raw.match(/(\d{4}-\d{2}-\d{2})/)?.[1];
+    if (iso) return iso;
+    return normalizeEnglishMonthDate(raw);
+  };
+
+  const dateRangeMatch = raw.match(/\((\d{2}\/\d{2}\/\d{4})\s*[-–—]\s*(\d{2}\/\d{2}\/\d{4})\)/);
+  if (dateRangeMatch) {
+    out.subscribedAt = parseDateStr(dateRangeMatch[1]) ?? undefined;
+    out.dueDate = parseDateStr(dateRangeMatch[2]) ?? undefined;
+  }
 
   // 尝试 JSON
   try {
@@ -87,20 +122,9 @@ function extractFields(
   const amtM = raw.match(/\$\s*(\d+(?:\.\d+)?)/) || raw.match(/[¥￥]\s*(\d+(?:\.\d+)?)/);
   if (amtM && !out.fee) out.fee = amtM[1];
 
-  // 日期匹配：YYYY-MM-DD, MM/DD/YYYY, 16 Jul 2026 / Jul 16 2026
+  // 日期兜底：单一日期（非范围）
   if (!out.subscribedAt) {
-    const iso = raw.match(/(\d{4}-\d{2}-\d{2})/)?.[1];
-    if (iso) {
-      out.subscribedAt = iso;
-    } else {
-      const slash = raw.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-      if (slash) {
-        out.subscribedAt = `${slash[3]}-${slash[1]}-${slash[2]}`;
-      } else {
-        const word = normalizeEnglishMonthDate(raw);
-        if (word) out.subscribedAt = word;
-      }
-    }
+    out.subscribedAt = parseDateStr(raw) ?? undefined;
   }
 
   // 提取套餐名（更宽松的匹配）
@@ -158,6 +182,7 @@ export function SubscriptionFormModal({
   state,
   editIndex,
   editRow,
+  language,
   onClose,
   onCommit,
 }: {
@@ -166,10 +191,12 @@ export function SubscriptionFormModal({
   state: AppState;
   editIndex: number | null;
   editRow: SubscriptionRow | null;
+  language: AppState["language"];
   onClose: () => void;
   onCommit: (next: AppState) => void;
   onNotice: (text: string, danger?: boolean) => void;
 }) {
+  const ft = tFor(resolveLang(language));
   const isAdd = mode === "add";
   const formRef = useRef<HTMLFormElement>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
@@ -198,10 +225,18 @@ export function SubscriptionFormModal({
     dueDate?: string;
   }>({});
   const [feeError, setFeeError] = useState<string | null>(null);
+  const [subscribedChecked, setSubscribedChecked] = useState(draft.subscribed);
+  const [category, setCategory] = useState(draft.category || "官方");
 
   useEffect(() => {
     setMatchedSub(null);
-  }, [mode, editIndex]);
+    setSubscribedChecked(draft.subscribed);
+    setCategory(draft.category || "官方");
+    setSubDate(draft.subscribedAt);
+    setDueDate(draft.dueDate);
+    setFeeError(null);
+    setDateErrors({});
+  }, [mode, editIndex, draft]);
 
   const handlePasteImage = async () => {
     try {
@@ -223,10 +258,7 @@ export function SubscriptionFormModal({
           setPasteText(ocrText);
           setMatchedSub({ id: fields.matchedSubId, plan: fields.matchedPlan });
           if (fields.category) {
-            const el = formRef.current?.elements.namedItem(
-              "category"
-            ) as HTMLSelectElement | null;
-            if (el) el.value = fields.category;
+            setCategory(fields.category);
           }
           if (fields.fee) {
             const el = formRef.current?.elements.namedItem(
@@ -237,9 +269,7 @@ export function SubscriptionFormModal({
           if (fields.subscribedAt) {
             setSubDate(fields.subscribedAt);
           }
-          showModalNotice(
-            `已自动匹配订阅「${fields.matchedPlan}」，确认后将为该订阅添加账单`
-          );
+          showModalNotice(ft.form.matched(fields.matchedPlan));
         } else {
           setPasteText(ocrText);
           setMatchedSub(null);
@@ -273,8 +303,6 @@ export function SubscriptionFormModal({
   const applyPaste = () => {
     if (!pasteText.trim() || !formRef.current) return;
     const fields = extractFields(pasteText, state.rows);
-    console.log("[OCR Debug] raw text:", pasteText.slice(0, 200));
-    console.log("[OCR Debug] extracted fields:", fields);
     const form = formRef.current;
     let filled = 0;
 
@@ -309,12 +337,19 @@ export function SubscriptionFormModal({
         filled++;
       }
     }
-    if (fields.category) {
-      const el = form.elements.namedItem("category") as HTMLSelectElement | null;
-      if (el) {
-        el.value = fields.category;
+    if (fields.dueDate) {
+      const el = form.elements.namedItem(
+        "dueDate"
+      ) as HTMLInputElement | null;
+      if (el && !el.value) {
+        el.value = fields.dueDate;
+        setDueDate(fields.dueDate);
         filled++;
       }
+    }
+    if (fields.category) {
+      setCategory(fields.category);
+      filled++;
     }
 
     if (filled > 0) {
@@ -350,7 +385,7 @@ export function SubscriptionFormModal({
     if (value) {
       const num = moneyValue(value);
       if (num < 0 || isNaN(num)) {
-        setFeeError("金额格式无效");
+        setFeeError("{ft.form.feeError}");
       } else {
         setFeeError(null);
       }
@@ -365,28 +400,28 @@ export function SubscriptionFormModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
-      <div className="modal-panel">
-        {/* Header */}
+      <div className="modal-panel sub-form-panel">
         <div className="modal-header">
-          <h2 id="modal-title" className="modal-title">
-            {isAdd ? "新增订阅" : "编辑订阅"}
-          </h2>
-          <button
-            type="button"
-            className="modal-close"
-            aria-label="关闭"
-            onClick={onClose}
-          >
-            ×
-          </button>
+          <div className="modal-header__text">
+            <h2 id="modal-title" className="modal-title">
+              {isAdd ? "新增订阅" : "编辑订阅"}
+            </h2>
+            <p className="modal-subtitle">
+              {isAdd ? "填写套餐与续费信息，或粘贴订单快速填充" : "修改套餐、金额与续费日期"}
+            </p>
+          </div>
+          <ModalCloseButton className="modal-close" onClick={onClose} />
         </div>
 
-        {/* Body */}
         <div className="modal-body">
           <form
             ref={formRef}
             id="sub-form"
+            className="sub-form"
             onSubmit={async (e) => {
               e.preventDefault();
               if (isSubmitting) return;
@@ -459,7 +494,6 @@ export function SubscriptionFormModal({
                 expired: fd.get("expired") === "on",
               };
 
-              // OCR 匹配：直接添加账单
               if (matchedSub && isAdd) {
                 const matched = subById(state, matchedSub.id);
                 if (matched) {
@@ -478,7 +512,29 @@ export function SubscriptionFormModal({
                     note,
                     kind: "payment",
                   });
-                  onCommit({ ...state, bills: [...state.bills, newBill] });
+
+                  const needsRestore =
+                    matched.expired || !matched.subscribed;
+                  if (needsRestore) {
+                    const idx = state.rows.findIndex(
+                      (r) => r.id === matchedSub.id
+                    );
+                    const restored = updateRow(state, idx, {
+                      expired: false,
+                      subscribed: true,
+                    });
+                    if ("error" in restored) {
+                      showModalNotice("恢复订阅失败", true);
+                      setIsSubmitting(false);
+                      return;
+                    }
+                    onCommit({
+                      ...restored,
+                      bills: [...restored.bills, newBill],
+                    });
+                  } else {
+                    onCommit({ ...state, bills: [...state.bills, newBill] });
+                  }
                   onClose();
                   showModalNotice(
                     `已为「${matched.plan}」添加账单 ${amount} 元`
@@ -497,7 +553,7 @@ export function SubscriptionFormModal({
                 }
                 onCommit(r);
                 onClose();
-                showModalNotice("已添加订阅");
+                showModalNotice(ft.form.add);
                 const idx = r.rows.length - 1;
                 const msg = subscribeNoticeAfterToggle(r, idx);
                 if (msg) showModalNotice(msg);
@@ -510,81 +566,44 @@ export function SubscriptionFormModal({
                 }
                 onCommit(result);
                 onClose();
-                showModalNotice("已保存");
+                showModalNotice(ft.form.save);
               }
 
               setIsSubmitting(false);
             }}
           >
-            {/* Paste Quick Fill */}
             {isAdd && (
-              <div
-                style={{
-                  marginBottom: 24,
-                  border: "1px dashed var(--color-text-tertiary)",
-                  borderRadius: 12,
-                  overflow: "hidden",
-                }}
-              >
+              <section className={`paste-quickfill${pasteOpen ? " is-open" : ""}`}>
                 <button
                   type="button"
+                  className="paste-quickfill__toggle"
                   onClick={() => setPasteOpen(!pasteOpen)}
-                  style={{
-                    width: "100%",
-                    padding: "12px 16px",
-                    background: "transparent",
-                    border: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    cursor: "pointer",
-                    fontSize: 15,
-                    fontWeight: 500,
-                    color: "var(--color-text-primary)",
-                  }}
+                  aria-expanded={pasteOpen}
                 >
-                  <span>📋 粘贴快速填充</span>
-                  <span
-                    style={{
-                      transform: pasteOpen ? "rotate(180deg)" : "none",
-                      transition: "transform 0.2s ease",
-                    }}
-                  >
-                    ▼
+                  <span className="paste-quickfill__label">
+                    <Icon name="clipboard" size={16} />
+                    {ft.form.paste}
+                  </span>
+                  <span className={`paste-quickfill__chevron${pasteOpen ? " is-open" : ""}`}>
+                    <Icon name="chevronDown" size={14} />
                   </span>
                 </button>
                 {pasteOpen && (
-                  <div style={{ padding: "0 16px 16px" }}>
+                  <div className="paste-quickfill__body">
                     <textarea
                       rows={3}
-                      placeholder="粘贴订单文本、邮件内容、短信..."
+                      className="textarea"
+                      placeholder="{ft.form.pastePlaceholder}"
                       value={pasteText}
                       onChange={(e) => setPasteText(e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: 12,
-                        fontSize: 14,
-                        borderRadius: 8,
-                        border: "1px solid var(--color-surface-secondary)",
-                        background: "var(--color-surface-secondary)",
-                        marginBottom: 12,
-                        resize: "vertical",
-                        fontFamily: "inherit",
-                      }}
                     />
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 12,
-                        flexWrap: "wrap",
-                      }}
-                    >
+                    <div className="paste-quickfill__actions">
                       <button
                         type="button"
                         className="btn btn--secondary btn--sm"
                         onClick={applyPaste}
                       >
-                        解析文字
+                        {ft.form.parseText}
                       </button>
                       <button
                         type="button"
@@ -592,164 +611,173 @@ export function SubscriptionFormModal({
                         onClick={handlePasteImage}
                         disabled={ocrLoading}
                       >
-                        {ocrLoading ? "识别中..." : "📷 粘贴图片 OCR"}
+                        {ocrLoading ? (
+                          "识别中…"
+                        ) : (
+                          <>
+                            <Icon name="camera" size={14} />
+                            粘贴图片 OCR
+                          </>
+                        )}
                       </button>
                     </div>
                   </div>
                 )}
+              </section>
+            )}
+
+            {matchedSub && (
+              <div className="form-match-banner">
+                已匹配「{matchedSub.plan}」，确认后将为其添加账单
               </div>
             )}
 
-            {/* Category */}
-            <div className="form-field" style={{ marginBottom: 20 }}>
-              <label>分类</label>
-              <select
-                name="category"
-                defaultValue={draft.category}
-                className="select"
-              >
-                <option value="官方">官方</option>
-                <option value="中转">中转</option>
-                <option value="中转额度包">中转额度包</option>
-                <option value="其他">其他</option>
-              </select>
-            </div>
-
-            {/* Plan Name */}
-            <div className="form-field" style={{ marginBottom: 20 }}>
-              <label>套餐 / 额度</label>
-              <input
-                name="plan"
-                required
-                defaultValue={draft.plan}
-                autoComplete="off"
-                autoFocus={isAdd}
-                className="input"
-                placeholder="例如：ChatGPT Plus"
-              />
-            </div>
-
-            {/* Fee */}
-            <div className="form-field" style={{ marginBottom: 20 }}>
-              <label>月费</label>
-              <input
-                name="fee"
-                defaultValue={draft.fee}
-                autoComplete="off"
-                onBlur={handleFeeBlur}
-                placeholder="例如：29.9"
-                className="input"
-              />
-              {feeError && (
-                <span
-                  style={{
-                    color: "var(--color-danger)",
-                    fontSize: 13,
-                    marginTop: 4,
-                  }}
+            <section className="form-section">
+              <div className="form-section__title">{ft.form.basic}</div>
+              <div className="form-field">
+                <label id="sub-category-label">{ft.form.category}</label>
+                <input type="hidden" name="category" value={category} />
+                <div
+                  className="category-chip-group"
+                  role="radiogroup"
+                  aria-labelledby="sub-category-label"
                 >
-                  {feeError}
-                </span>
-              )}
-            </div>
-
-            {/* Date Row */}
-            <div className="form-row" style={{ marginBottom: 20 }}>
-              <div className="form-field" style={{ position: "relative" }}>
-                <label>订阅日期</label>
-                <input type="hidden" name="subscribedAt" value={subDate} />
-                <CalendarPicker
-                  value={subDate}
-                  onChange={handleSubDateChange}
-                  isOpen={pickerOpen === "sub"}
-                  onOpen={() =>
-                    setPickerOpen((prev) => (prev === "sub" ? null : "sub"))
-                  }
-                  onClose={() => setPickerOpen(null)}
-                />
-                {dateErrors.subscribedAt && (
-                  <span
-                    style={{
-                      color: "var(--color-danger)",
-                      fontSize: 13,
-                      marginTop: 4,
-                    }}
-                  >
-                    {dateErrors.subscribedAt}
-                  </span>
-                )}
+                  {CATEGORY_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={category === opt.value}
+                      className={`category-chip${
+                        category === opt.value ? " is-selected" : ""
+                      }`}
+                      onClick={() => setCategory(opt.value)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="form-field" style={{ position: "relative" }}>
-                <label>续费日期</label>
-                <input type="hidden" name="dueDate" value={dueDate} />
-                <CalendarPicker
-                  value={dueDate}
-                  onChange={handleDueDateChange}
-                  isOpen={pickerOpen === "due"}
-                  onOpen={() =>
-                    setPickerOpen((prev) => (prev === "due" ? null : "due"))
-                  }
-                  onClose={() => setPickerOpen(null)}
-                />
-                {dateErrors.dueDate && (
-                  <span
-                    style={{
-                      color: "var(--color-danger)",
-                      fontSize: 13,
-                      marginTop: 4,
-                    }}
-                  >
-                    {dateErrors.dueDate}
-                  </span>
-                )}
-              </div>
-            </div>
 
-            {/* Usage */}
-            <div className="form-field" style={{ marginBottom: 20 }}>
-              <label>备注</label>
-              <textarea
-                name="usage"
-                defaultValue={draft.usage}
-                rows={3}
-                className="textarea"
-                placeholder="可选：添加备注信息"
-              />
-            </div>
-
-            {/* Checkboxes */}
-            <div style={{ marginBottom: 16 }}>
-              <label className="toggle">
+              <div className="form-field">
+                <label htmlFor="sub-plan">{ft.form.plan}</label>
                 <input
-                  type="checkbox"
-                  name="subscribed"
-                  defaultChecked={draft.subscribed}
+                  id="sub-plan"
+                  name="plan"
+                  required
+                  defaultValue={draft.plan}
+                  autoComplete="off"
+                  autoFocus={isAdd}
+                  className="input"
+                  placeholder={ft.form.planPlaceholder}
                 />
-                已订阅
-              </label>
-            </div>
+              </div>
 
-            {draft.subscribed && (
-              <div style={{ marginBottom: 16 }}>
-                <label className="toggle">
+              <div className="form-field">
+                <label htmlFor="sub-fee">{ft.form.fee}</label>
+                <input
+                  id="sub-fee"
+                  name="fee"
+                  defaultValue={draft.fee}
+                  autoComplete="off"
+                  onBlur={handleFeeBlur}
+                  placeholder={ft.form.feePlaceholder}
+                  className="input"
+                />
+                {feeError && <span className="field-error">{feeError}</span>}
+              </div>
+            </section>
+
+            <section className="form-section">
+              <div className="form-row">
+                <div className="form-field form-field--picker">
+                  <label>{ft.form.subDate}</label>
+                  <input type="hidden" name="subscribedAt" value={subDate} />
+                  <CalendarPicker
+                    value={subDate}
+                    onChange={handleSubDateChange}
+                    isOpen={pickerOpen === "sub"}
+                    onOpen={() =>
+                      setPickerOpen((prev) => (prev === "sub" ? null : "sub"))
+                    }
+                    onClose={() => setPickerOpen(null)}
+                  />
+                  {dateErrors.subscribedAt && (
+                    <span className="field-error">{dateErrors.subscribedAt}</span>
+                  )}
+                </div>
+                <div className="form-field form-field--picker">
+                  <label>{ft.form.dueDate}</label>
+                  <input type="hidden" name="dueDate" value={dueDate} />
+                  <CalendarPicker
+                    value={dueDate}
+                    onChange={handleDueDateChange}
+                    isOpen={pickerOpen === "due"}
+                    onOpen={() =>
+                      setPickerOpen((prev) => (prev === "due" ? null : "due"))
+                    }
+                    onClose={() => setPickerOpen(null)}
+                  />
+                  {dateErrors.dueDate && (
+                    <span className="field-error">{dateErrors.dueDate}</span>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section className="form-section">
+              <div className="form-field">
+                <label htmlFor="sub-usage">{ft.form.note}</label>
+                <textarea
+                  id="sub-usage"
+                  name="usage"
+                  defaultValue={draft.usage}
+                  rows={2}
+                  className="textarea"
+                  placeholder="{ft.form.notePlaceholder}"
+                />
+              </div>
+
+              <div className="form-checks">
+                <label className="form-check">
                   <input
                     type="checkbox"
-                    name="expired"
-                    defaultChecked={draft.expired}
+                    name="subscribed"
+                    checked={subscribedChecked}
+                    onChange={(e) => setSubscribedChecked(e.target.checked)}
                   />
-                  标记为已过期
+                  <span className="form-check__box" aria-hidden="true" />
+                  <span className="form-check__text">
+                    <span className="form-check__title">{ft.form.subscribed}</span>
+                    <span className="form-check__desc">{ft.form.subscribedDesc}</span>
+                  </span>
                 </label>
+
+                {subscribedChecked && (
+                  <label className="form-check">
+                    <input
+                      type="checkbox"
+                      name="expired"
+                      defaultChecked={draft.expired}
+                    />
+                    <span className="form-check__box" aria-hidden="true" />
+                    <span className="form-check__text">
+                      <span className="form-check__title">{ft.form.expired}</span>
+                      <span className="form-check__desc">{ft.form.expiredDesc}</span>
+                    </span>
+                  </label>
+                )}
               </div>
-            )}
+            </section>
           </form>
+
           {modalNotice && (
-            <div className={`modal-notice ${modalNotice.danger ? "danger" : ""}`}>
+            <div className={`modal-notice${modalNotice.danger ? " danger" : ""}`}>
               {modalNotice.text}
             </div>
           )}
         </div>
 
-        {/* Footer */}
         <div className="modal-footer">
           {!isAdd && editRow && editIndex !== null ? (
             <button
@@ -764,7 +792,7 @@ export function SubscriptionFormModal({
                 }
                 onCommit(result);
                 onClose();
-                showModalNotice("已删除");
+                showModalNotice(ft.form.delete);
               }}
             >
               删除
@@ -772,7 +800,7 @@ export function SubscriptionFormModal({
           ) : (
             <span />
           )}
-          <div className="modal-footer--end" style={{ gap: 12 }}>
+          <div className="modal-footer--end">
             <button
               type="button"
               className="btn btn--secondary"
@@ -789,11 +817,11 @@ export function SubscriptionFormModal({
             >
               {isSubmitting
                 ? isAdd
-                  ? "添加中..."
-                  : "保存中..."
+                  ? ft.form.adding
+                  : ft.form.saving
                 : isAdd
-                ? "添加"
-                : "保存"}
+                  ? ft.form.add
+                  : ft.form.save}
             </button>
           </div>
         </div>

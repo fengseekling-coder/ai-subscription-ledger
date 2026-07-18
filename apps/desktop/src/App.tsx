@@ -17,6 +17,7 @@ import { Dashboard } from "./Dashboard";
 import { DueDatePickerModal } from "./DueDatePickerModal";
 import { PendingView } from "./PendingView";
 import { SettingsModal } from "./SettingsModal";
+import { resolveLang, tFor, type LangPref } from "./i18n";
 import { StatsView } from "./StatsView";
 import { SubTable } from "./SubTable";
 import { buildSubTableHandlers } from "./subTableHandlers";
@@ -26,16 +27,9 @@ import { useRenewReminders } from "./useRenewReminders";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Icon } from "./ui/Icon";
 
 type AppMode = "subs" | "expired" | "bills" | "pending" | "stats";
-
-const MODE_TITLES: Record<AppMode, string> = {
-  subs: "订阅列表",
-  stats: "统计",
-  expired: "已过期",
-  bills: "账单",
-  pending: "待续费",
-};
 
 const NEW_SUBSCRIPTION_DRAFT: SubscriptionFormDraft = {
   category: "官方",
@@ -213,6 +207,8 @@ export default function App() {
   useWindowCloseHandler(stateRef);
 
   // Derived state - memoized
+  const lang = resolveLang(state?.language);
+  const tr = useMemo(() => tFor(lang), [lang]);
   const summary = useMemo(() => (state ? computeSummary(state) : null), [state]);
   const pending = useMemo(() => (state ? pendingRenewItems(state.rows) : []), [state]);
   const bills = useMemo(() => (state ? sortedBills(state) : []), [state]);
@@ -268,6 +264,11 @@ export default function App() {
   const commit = useCallback((next: AppState) => {
     setState(next);
   }, []);
+
+  const changeLanguage = useCallback((next: LangPref) => {
+    setState((prev) => (prev ? { ...prev, language: next } : prev));
+    showNotice(next === "en" ? "Language: English" : next === "zh-CN" ? "语言：简体中文" : "语言：跟随系统");
+  }, [showNotice]);
 
   const subHandlers = useMemo(
     () =>
@@ -350,7 +351,7 @@ export default function App() {
   if (isLoading) {
     return (
       <div className="app">
-        <div className="loading-screen">加载中…</div>
+        <div className="loading-screen">…</div>
       </div>
     );
   }
@@ -386,9 +387,7 @@ export default function App() {
     );
   }
 
-  const monthBills = billsForCalendarMonth(state.bills);
-  const billAllTotal = bills.reduce((s, b) => s + b.amount, 0);
-  const billMonthTotal = monthBills.reduce((s, b) => s + b.amount, 0);
+  const billMonthTotal = billsForCalendarMonth(state.bills).reduce((s, b) => s + b.amount, 0);
 
   return (
     <div className="app">
@@ -397,17 +396,16 @@ export default function App() {
           <div className="brand">
             <div className="brand__mark" aria-hidden />
             <div>
-              <h1 className="brand__title">订阅账本</h1>
-              <p className="brand__meta">本机私密 · 本地数据库</p>
+              <h1 className="brand__title">{tr.brand}</h1>
             </div>
           </div>
           <div className="toolbar">
             <div className="toolbar__group">
               <button type="button" className="primary" onClick={handlePrimary}>
-                {mode === "bills" ? "记一笔" : "新增订阅"}
+                {tr.toolbar.add}
               </button>
               <button type="button" onClick={() => setShowCatalog(true)}>
-                服务库
+                {tr.toolbar.catalog}
               </button>
             </div>
             <div className="toolbar__group">
@@ -415,12 +413,14 @@ export default function App() {
                 type="button"
                 className={notifyOn ? "is-on" : ""}
                 onClick={() => void toggleNotify(!notifyOn, setNotifyOn)}
-                title={notifyOn ? "点击关闭续费提醒" : "点击开启续费提醒"}
+                title={notifyOn ? "续费提醒已开" : "续费提醒已关"}
+                aria-label={notifyOn ? "关闭续费提醒" : "开启续费提醒"}
+                aria-pressed={notifyOn}
               >
-                {notifyOn ? "提醒 ●" : "提醒"}
+                <Icon name="bell" size={15} />
               </button>
-              <button type="button" onClick={() => setShowSettings(true)} title="设置">
-                ⚙
+              <button type="button" onClick={() => setShowSettings(true)} title="设置" aria-label={tr.toolbar.settings}>
+                <Icon name="settings" size={15} />
               </button>
             </div>
           </div>
@@ -428,66 +428,75 @@ export default function App() {
       </header>
 
       <main className="main">
-        <Dashboard state={state} summary={summary} onCommit={commit} />
+        <nav className="seg-nav seg-nav--page" aria-label="页面">
+          {(
+            [
+              ["subs", tr.nav.subs],
+              ["stats", tr.nav.stats],
+              ["expired", tr.nav.expired],
+              ["bills", tr.nav.bills],
+            ] as const
+          ).map(([m, label]) => (
+            <button key={m} type="button" className={mode === m ? "active" : ""} onClick={() => setMode(m)}>
+              {label}
+            </button>
+          ))}
+          {pending.length > 0 && (
+            <button type="button" className={mode === "pending" ? "active" : ""} onClick={() => setMode("pending")}>
+              {tr.nav.pending}
+              <span className="seg-badge">{pending.length}</span>
+            </button>
+          )}
+        </nav>
 
-        {notice && <div className={`notice ${notice.danger ? "danger" : ""}`}>{notice.text}</div>}
+        {!isEmptyLedger && (
+          <Dashboard
+            state={state}
+            summary={summary}
+            onCommit={commit}
+            variant={mode === "subs" ? "full" : "compact"}
+          />
+        )}
+
+        {notice && (
+          <div className={`toast ${notice.danger ? "danger" : ""}`} role="status">
+            {notice.text}
+          </div>
+        )}
 
         {isEmptyLedger && (
           <div className="empty-ledger">
-            <p className="empty-ledger__title">账本还是空的</p>
+            <p className="empty-ledger__title">{tr.empty.title}</p>
             <p className="empty-ledger__text">
-              全新开始用 <strong>服务库</strong> 或 <strong>新增订阅</strong>。
+              {tr.empty.desc}
             </p>
             <div className="empty-ledger__actions">
               <button type="button" className="primary" onClick={openAddSubscription}>
-                新增订阅
+                {tr.empty.add}
               </button>
               <button type="button" onClick={() => setShowCatalog(true)}>
-                打开服务库
+                {tr.empty.fromCatalog}
               </button>
             </div>
           </div>
         )}
 
-        <div className="view-toolbar">
-          <div className="view-toolbar__left">
-            <h3 className="view-toolbar__title">{MODE_TITLES[mode]}</h3>
-            {mode === "expired" && <span className="section__hint">不计入本月支出</span>}
-            {mode === "stats" && (
-              <span className="section__hint">本月按账单付款日 · 月费为有效订阅标价合计</span>
-            )}
-            {mode === "bills" && (
-              <span className="section__hint">
-                本月 {monthBills.length} 笔 · {fmtMoney(billMonthTotal)} · 全部 {bills.length} 笔 · {fmtMoney(billAllTotal)}
-              </span>
-            )}
-            {mode === "pending" && pending.length > 0 && (
-              <span className="section__hint">
-                {pending.length} 项 · {summary.pendingFirstPlan ?? "—"} {summary.pendingFirstNote ?? ""}
-              </span>
-            )}
+        {(mode !== "subs" || !isEmptyLedger) && (
+          <div className="view-toolbar">
+            <div className="view-toolbar__left">
+              <h3 className="view-toolbar__title">{tr.nav[mode === "subs" ? "subs" : mode === "stats" ? "stats" : mode === "expired" ? "expired" : mode === "bills" ? "bills" : "pending"]}</h3>
+              {mode === "subs" && !isEmptyLedger && (
+                <span className="section__hint">{summary.activeCount}</span>
+              )}
+              {mode === "bills" && (
+                <span className="section__hint">{fmtMoney(billMonthTotal)}</span>
+              )}
+              {mode === "pending" && pending.length > 0 && (
+                <span className="section__hint">{pending.length}</span>
+              )}
+            </div>
           </div>
-          <nav className="seg-nav">
-            {(
-              [
-                ["subs", "概览"],
-                ["stats", "统计"],
-                ["expired", "已过期"],
-                ["bills", "账单"],
-              ] as const
-            ).map(([m, label]) => (
-              <button key={m} type="button" className={mode === m ? "active" : ""} onClick={() => setMode(m)}>
-                {label}
-              </button>
-            ))}
-            {pending.length > 0 && (
-              <button type="button" className={mode === "pending" ? "active" : ""} onClick={() => setMode("pending")}>
-                待续费
-                <span className="seg-badge">{pending.length}</span>
-              </button>
-            )}
-          </nav>
-        </div>
+        )}
 
         {mode === "stats" && <StatsView state={state} />}
 
@@ -508,7 +517,7 @@ export default function App() {
         )}
 
         {mode === "bills" && (
-          <BillsView state={state} bills={bills} onCommit={commit} />
+          <BillsView state={state} bills={bills} onCommit={commit} onNotice={showNotice} />
         )}
 
         {mode === "pending" && (
@@ -528,6 +537,7 @@ export default function App() {
           state={state}
           editIndex={editIndex}
           editRow={editRow}
+          language={state.language}
           onClose={closeSubModal}
           onCommit={commit}
           onNotice={showNotice}
@@ -556,7 +566,13 @@ export default function App() {
         />
       )}
 
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showSettings && (
+        <SettingsModal
+          language={state?.language}
+          onLanguageChange={changeLanguage}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
     </div>
   );
 }

@@ -1,22 +1,25 @@
 import { memo, useCallback, useMemo } from "react";
 import {
   dueMeta,
+  feeDisplayParts,
   isCreditLike,
-  statusDisplayClass,
-  statusTitle,
   type SubscriptionRow,
 } from "@ai-sub/core";
 
 const ReadCell = memo(function ReadCell({
   value,
   className,
+  empty = "dash",
 }: {
   value: string;
   className?: string;
+  /** dash = show — ; blank = leave empty */
+  empty?: "dash" | "blank";
 }) {
+  const v = (value || "").trim();
   return (
-    <td className={className ?? ""}>
-      {value || <span className="text-tertiary">—</span>}
+    <td className={className ?? ""} title={v || undefined}>
+      {v ? v : empty === "blank" ? null : <span className="text-tertiary">—</span>}
     </td>
   );
 });
@@ -38,7 +41,6 @@ type SubTableRowProps = {
   handlers: SubTableHandlers;
 };
 
-// Category display mapping
 const getCategoryStyle = (category: string): { class: string; label: string } => {
   switch (category) {
     case "官方":
@@ -65,9 +67,9 @@ const SubTableRow = memo(function SubTableRow({ row, index, handlers }: SubTable
   } = handlers;
 
   const due = useMemo(() => dueMeta(row.dueDate), [row.dueDate]);
+  const feeParts = useMemo(() => feeDisplayParts(row.fee), [row.fee]);
   const categoryStyle = getCategoryStyle(row.category);
 
-  // Memoized callbacks for this row
   const handleToggle = useCallback(() => onToggle(index), [onToggle, index]);
   const handleEdit = useCallback(() => onEdit(index), [onEdit, index]);
   const handlePickDue = useCallback(() => onPickDue(index), [onPickDue, index]);
@@ -77,10 +79,6 @@ const SubTableRow = memo(function SubTableRow({ row, index, handlers }: SubTable
   const handleClearExpired = useCallback(() => onClearExpired(index), [onClearExpired, index]);
   const handleDelete = useCallback(() => onDelete(index), [onDelete, index]);
 
-  const statusClass = useMemo(() => statusDisplayClass(row), [row]);
-  const statusTooltip = useMemo(() => statusTitle(row), [row]);
-
-  // Determine due badge style
   const dueBadgeClass =
     due.cls === "overdue"
       ? "due-badge--overdue"
@@ -88,80 +86,41 @@ const SubTableRow = memo(function SubTableRow({ row, index, handlers }: SubTable
         ? "due-badge--warn"
         : "due-badge--ok";
 
-  // Row opacity based on state
-  const rowOpacity = row.expired ? "list-item--expired" : !row.subscribed ? "list-item--unsubscribed" : "";
+  const rowOpacity = row.expired
+    ? "list-item--expired"
+    : !row.subscribed
+      ? "list-item--unsubscribed"
+      : "";
 
   return (
     <tr className={`list-item ${rowOpacity}`}>
-      {/* 分类 */}
       <td>
-        <span className={`category-tag ${categoryStyle.class}`}>
-          {categoryStyle.label}
-        </span>
+        <span className={`category-tag ${categoryStyle.class}`}>{categoryStyle.label}</span>
       </td>
 
-      {/* 套餐/额度 */}
       <ReadCell value={row.plan} />
 
-      {/* 月费 */}
-      <td style={{ fontWeight: 500 }}>{row.fee || "—"}</td>
-
-      {/* 订阅状态 */}
-      <td style={{ textAlign: "center" }}>
-        {row.subscribed ? (
-          <button
-            type="button"
-            className={`status-dot ${statusClass}`}
-            title={statusTooltip}
-            aria-label="已订阅"
-            onClick={handleToggle}
-          />
-        ) : (
-          <button
-            type="button"
-            className="status-dot status-dot--unsubscribed"
-            title="点击标记为已订阅"
-            aria-label="未订阅"
-            onClick={handleToggle}
-          />
-        )}
+      <td className="cell-fee">
+        <span className="cell-fee__main">{feeParts.primary}</span>
+        {feeParts.approx && <span className="cell-fee__approx">{feeParts.approx}</span>}
       </td>
 
-      {/* 备注 */}
-      <ReadCell value={row.usage} />
+      <ReadCell value={row.usage} className="cell-note" empty="blank" />
 
-      {/* 订阅日期 */}
       <td>
         {!row.subscribed ? (
-          <span className="text-tertiary">—</span>
-        ) : row.expired && !row.dueDate ? (
-          <span className="due-badge due-badge--overdue">已过期</span>
-        ) : isCreditLike(row) ? (
-          <span className="category-tag category-tag--credit" style={{ fontSize: 11 }}>
-            非周期
-          </span>
-        ) : !row.dueDate ? (
           <button
             type="button"
             className="btn btn--sm btn--ghost"
-            onClick={handlePickDue}
-            style={{ padding: "4px 8px", fontSize: 12 }}
+            onClick={handleToggle}
+            title="标记为已订阅"
           >
-            设置日期
+            订阅
           </button>
-        ) : (
-          <span>{row.dueDate}</span>
-        )}
-      </td>
-
-      {/* 剩余时间 */}
-      <td>
-        {!row.subscribed ? (
-          <span className="text-tertiary">—</span>
         ) : row.expired && !row.dueDate ? (
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div className="due-actions">
             <span className={`due-badge ${dueBadgeClass}`}>已过期</span>
-            <div style={{ display: "flex", gap: 4 }}>
+            <div className="due-actions__btns">
               <button type="button" className="btn btn--sm" onClick={handleClearExpired}>
                 恢复
               </button>
@@ -171,28 +130,27 @@ const SubTableRow = memo(function SubTableRow({ row, index, handlers }: SubTable
             </div>
           </div>
         ) : isCreditLike(row) ? (
-          <span className="text-tertiary">—</span>
+          <span className="text-tertiary">非周期</span>
         ) : !row.dueDate ? (
-          <button
-            type="button"
-            className="btn btn--sm btn--ghost"
-            onClick={handleMarkExpired}
-          >
-            标记过期
-          </button>
+          <div className="due-actions">
+            <button type="button" className="btn btn--sm btn--ghost" onClick={handlePickDue}>
+              设置日期
+            </button>
+            <button type="button" className="btn btn--sm btn--ghost" onClick={handleMarkExpired}>
+              过期
+            </button>
+          </div>
         ) : (
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <span className={`due-badge ${dueBadgeClass}`}>{due.label}</span>
+          <div className="due-actions">
+            <span className={`due-badge ${dueBadgeClass}`} title={row.dueDate}>
+              {due.label}
+            </span>
             {due.cls === "overdue" && (
-              <div style={{ display: "flex", gap: 4 }}>
+              <div className="due-actions__btns">
                 <button type="button" className="btn btn--sm" onClick={handleRenew}>
                   已续费
                 </button>
-                <button
-                  type="button"
-                  className="btn btn--sm btn--ghost"
-                  onClick={handleMarkUnrenewed}
-                >
+                <button type="button" className="btn btn--sm btn--ghost" onClick={handleMarkUnrenewed}>
                   取消
                 </button>
               </div>
@@ -201,9 +159,8 @@ const SubTableRow = memo(function SubTableRow({ row, index, handlers }: SubTable
         )}
       </td>
 
-      {/* 操作 */}
-      <td>
-        <button type="button" className="btn btn--sm btn--ghost" onClick={handleEdit}>
+      <td className="cell-actions">
+        <button type="button" className="btn btn--sm btn--ghost cell-actions__btn" onClick={handleEdit}>
           编辑
         </button>
       </td>
@@ -228,7 +185,6 @@ export const SubTable = memo(function SubTable({
     onDelete,
   } = handlers;
 
-  // Memoize stable handler references
   const stableHandlers = useMemo(
     () => ({
       onToggle,
@@ -247,24 +203,20 @@ export const SubTable = memo(function SubTable({
     return (
       <div className="empty-state">
         <div className="empty-state__title">暂无订阅</div>
-        <div className="empty-state__desc">点击右上角「+」添加你的第一个订阅</div>
+        <div className="empty-state__desc">点右上角新增，或从服务库添加</div>
       </div>
     );
   }
 
   return (
     <div className="list-container">
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <table>
         <thead>
           <tr className="list-header">
             <th className="list-header__cell">分类</th>
             <th className="list-header__cell">套餐</th>
-            <th className="list-header__cell">月费</th>
-            <th className="list-header__cell" style={{ textAlign: "center" }}>
-              状态
-            </th>
+            <th className="list-header__cell">金额</th>
             <th className="list-header__cell">备注</th>
-            <th className="list-header__cell">订阅日</th>
             <th className="list-header__cell">剩余</th>
             <th className="list-header__cell" aria-label="操作" />
           </tr>
@@ -279,7 +231,6 @@ export const SubTable = memo(function SubTable({
   );
 });
 
-/** Shared confirm + actions for unrenewed / delete row (used by App views). */
 export function confirmUnrenewedOrDelete(
   plan: string,
   onDelete: () => void,

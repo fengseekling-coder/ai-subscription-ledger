@@ -57,6 +57,7 @@ export function computeSummary(state: AppState, ref = new Date()): Summary {
     nearestPlan: nearest?.row.plan ?? null,
     nearestDueDate: nearest?.row.dueDate ?? null,
     nearestLeft: nearest?.left ?? null,
+    nearestFee: nearest?.row.fee ? String(nearest.row.fee) : null,
     nearestUrgent: Boolean(nearest && nearest.left !== null && nearest.left >= 0 && nearest.left <= 3),
     pendingRenewCount: pending.length,
     pendingFirstPlan: pending[0]?.row.plan ?? null,

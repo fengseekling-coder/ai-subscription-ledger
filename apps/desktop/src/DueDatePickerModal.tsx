@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { CalendarPicker } from "./CalendarPicker";
+import { ModalCloseButton } from "./ui/Icon";
 
 export function DueDatePickerModal({
   plan,
@@ -28,9 +29,7 @@ export function DueDatePickerModal({
       <div className="modal__panel" style={{ maxWidth: 400 }}>
         <div className="modal__head">
           <h2 className="modal__title">设置续费日</h2>
-          <button type="button" className="modal__close" onClick={onCancel}>
-            ×
-          </button>
+          <ModalCloseButton onClick={onCancel} />
         </div>
         <form
           className="modal__body"

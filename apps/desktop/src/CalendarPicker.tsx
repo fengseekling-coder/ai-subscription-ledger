@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Icon } from "./ui/Icon";
 import {
   isoToDate,
   dateToIso,
@@ -97,19 +98,17 @@ export function CalendarPicker({ value, onChange, isOpen: controlledOpen, onOpen
         aria-expanded={open}
       >
         {displayLabel}
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ marginLeft: 6, opacity: 0.5 }}>
-          <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
+        <Icon name="chevronDown" size={12} style={{ marginLeft: 6, opacity: 0.5 }} />
       </button>
 
       {open && (
         <div className="cal-picker__dropdown">
           <div className="cal-picker__nav">
-            <button type="button" className="cal-picker__arrow" onClick={handlePrevMonth}>‹</button>
+            <button type="button" className="cal-picker__arrow" onClick={handlePrevMonth} aria-label="上个月"><Icon name="chevronLeft" size={14} /></button>
             <span className="cal-picker__ym">
               {formatYearMonth(viewYear, viewMonth)}
             </span>
-            <button type="button" className="cal-picker__arrow" onClick={handleNextMonth}>›</button>
+            <button type="button" className="cal-picker__arrow" onClick={handleNextMonth} aria-label="下个月"><Icon name="chevronRight" size={14} /></button>
           </div>
 
           <div className="cal-picker__grid">

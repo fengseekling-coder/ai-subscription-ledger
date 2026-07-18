@@ -100,10 +100,15 @@ function hydrateImportedState(parsed: {
   ensureSubscribedAtFromRows(rows, bills);
   const rawBudget = Number(parsed.budget);
   const budget = Number.isFinite(rawBudget) && rawBudget >= 0 ? rawBudget : 500;
+  const language: AppState["language"] = (() => {
+    const raw = (parsed as { language?: unknown }).language;
+    return raw === "zh-CN" || raw === "en" || raw === "auto" ? raw : "auto";
+  })();
   return {
     budget,
     rows,
     bills,
+    language,
   };
 }
 

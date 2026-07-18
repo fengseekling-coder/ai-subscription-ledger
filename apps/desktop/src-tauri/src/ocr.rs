@@ -88,7 +88,13 @@ pub fn ocr_image_rgba(rgba: &[u8], width: usize, height: usize) -> Result<String
     let requests = NSArray::from_slice(&[vn_request]);
     handler
         .performRequests_error(&requests)
-        .map_err(|e| format!("Vision OCR 失败: {}", e.localizedDescription()))?;
+        .map_err(|e| {
+            let code = e.code();
+            let domain = e.domain();
+            let localized = e.localizedDescription();
+            // 不臆测 VNError 码含义，保留系统文案 + 域/码便于排查
+            format!("Vision OCR 失败 [{}:{}]: {}", domain, code, localized)
+        })?;
 
     let results = request
         .results()

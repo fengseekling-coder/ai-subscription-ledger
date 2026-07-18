@@ -29,6 +29,8 @@ export interface AppState {
   budget: number;
   rows: SubscriptionRow[];
   bills: Bill[];
+  /** UI language preference; "auto" follows system locale. */
+  language?: "auto" | "zh-CN" | "en";
 }
 
 export interface Summary {
@@ -42,6 +44,7 @@ export interface Summary {
   nearestPlan: string | null;
   nearestDueDate: string | null;
   nearestLeft: number | null;
+  nearestFee: string | null;
   nearestUrgent: boolean;
   pendingRenewCount: number;
   pendingFirstPlan: string | null;

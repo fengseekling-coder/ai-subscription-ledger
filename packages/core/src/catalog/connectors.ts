@@ -78,12 +78,43 @@ function parseRelayOrderText(raw: string): ConnectorPasteResult {
 
     const amount = amtM ? moneyValue(amtM) : 0;
 
+    // 只过滤明确元数据行；套餐名交给 skipPatterns，避免前缀误伤
+    const skipPrefixes = [
+      "小计", "合計", "總計",
+      "余额", "餘額", "账户余额", "帳戶餘額",
+      "金额", "金額",
+      "状态", "狀態",
+      "交易", "支付",
+    ];
+    const skipPatterns = [
+      // 分隔线（整行由同一符号组成）
+      /^[─\-=]{3,}$/,
+      // 日期范围行
+      /^\(\d{2}\/\d{2}\/\d{4}\s*[-–]\s*\d{2}\/\d{2}\/\d{4}\)/,
+      // 金额行
+      /\$\d+(?:\.\d+)?\s*USD/,
+      // 订单号行
+      /^[A-Z]{2,}-\d+/,
+      // 套餐名+位置行，如 LAX_AS3.Pro.Pocket – US-DMIT-CN2GIA
+      /^[A-Z][A-Za-z0-9_]+\.[A-Za-z0-9]+\.[A-Za-z0-9]+\s*[-–]\s*[A-Z]/,
+    ];
+    const noteLines = raw
+      .split("\n")
+      .filter((line) => {
+        const t = line.trim();
+        if (!t) return false;
+        if (skipPrefixes.some((p) => t.startsWith(p))) return false;
+        if (skipPatterns.some((p) => p.test(t))) return false;
+        return true;
+      });
+    const note = noteLines.length ? noteLines.join(" · ") : raw.slice(0, 200);
+
     bills.push(
       normalizeBill({
         amount,
         paidAt,
         orderId: orderM ?? "",
-        note: raw.slice(0, 200),
+        note,
         kind: "payment",
       })
     );

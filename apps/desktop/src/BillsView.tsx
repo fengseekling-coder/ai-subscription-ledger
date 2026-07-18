@@ -4,9 +4,10 @@ type Props = {
   state: AppState;
   bills: Bill[];
   onCommit: (next: AppState) => void;
+  onNotice: (text: string, danger?: boolean) => void;
 };
 
-export function BillsView({ state, bills, onCommit }: Props) {
+export function BillsView({ state, bills, onCommit, onNotice }: Props) {
   return (
     <section className="section">
       <div className="table-card">
@@ -47,7 +48,10 @@ export function BillsView({ state, bills, onCommit }: Props) {
                       <button
                         type="button"
                         onClick={() => {
-                          if (confirm("确定删除这笔账单？")) onCommit(deleteBill(state, bill.id));
+                          if (confirm("确定删除这笔账单？")) {
+                            onCommit(deleteBill(state, bill.id));
+                            onNotice("账单已删除");
+                          }
                         }}
                       >
                         删
