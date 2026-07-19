@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "订阅账本",
+  "productName": "Subscription Ledger",
   "version": "0.1.0",
   "identifier": "com.azhuilab.subscription-ledger",
   "build": {
@@ -42,7 +42,10 @@
       "minimumSystemVersion": "10.15"
     },
     "windows": {
-      "nsis": {}
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
     }
   },
   "mainBinaryName": "subscription-ledger"

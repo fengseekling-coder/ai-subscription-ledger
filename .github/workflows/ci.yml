@@ -112,7 +112,12 @@ jobs:
         shell: bash
         run: |
           npm run build -w @ai-sub/core
-          npm run tauri:build -w @ai-sub/desktop -- --target ${{ matrix.target }}
+          EXTRA_ARGS=()
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # NSIS only: WiX/MSI is more brittle with non-English metadata on CI
+            EXTRA_ARGS+=(--bundles nsis)
+          fi
+          npm run tauri:build -w @ai-sub/desktop -- --target ${{ matrix.target }} "${EXTRA_ARGS[@]}"
         env:
           CI: true
 
