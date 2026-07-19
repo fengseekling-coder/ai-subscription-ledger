@@ -57,14 +57,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [macos-latest]
         include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
           - os: macos-latest
             target: aarch64-apple-darwin
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
 
     steps:
       - name: Checkout code
@@ -112,12 +108,7 @@ jobs:
         shell: bash
         run: |
           npm run build -w @ai-sub/core
-          EXTRA_ARGS=()
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            # NSIS only: WiX/MSI is more brittle with non-English metadata on CI
-            EXTRA_ARGS+=(--bundles nsis)
-          fi
-          npm run tauri:build -w @ai-sub/desktop -- --target ${{ matrix.target }} "${EXTRA_ARGS[@]}"
+          npm run tauri:build -w @ai-sub/desktop -- --target ${{ matrix.target }} --bundles app,dmg
         env:
           CI: true
 
@@ -128,23 +119,7 @@ jobs:
           name: macos-app
           path: apps/desktop/src-tauri/target/*/release/bundle/**/*.app
 
-      - name: Upload artifacts (Windows)
-        if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-installer
-          path: |
-            apps/desktop/src-tauri/target/*/release/bundle/**/*.msi
-            apps/desktop/src-tauri/target/*/release/bundle/**/*.exe
 
-      - name: Upload artifacts (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-packages
-          path: |
-            apps/desktop/src-tauri/target/*/release/bundle/**/*.AppImage
-            apps/desktop/src-tauri/target/*/release/bundle/**/*.deb
 
   security-audit:
     runs-on: ubuntu-latest

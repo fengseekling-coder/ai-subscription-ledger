@@ -34,7 +34,7 @@ npm run tauri:build -w @ai-sub/desktop
 ```bash
 # 需 APPLE_ID、APPLE_PASSWORD（app-specific）、APPLE_TEAM_ID
 xcrun notarytool submit \
-  "apps/desktop/src-tauri/target/release/bundle/dmg/订阅账本_0.1.0_aarch64.dmg" \
+  "apps/desktop/src-tauri/target/release/bundle/dmg/订阅账本_0.1.1_aarch64.dmg" \
   --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" \
   --wait
 xcrun stapler staple "apps/desktop/src-tauri/target/release/bundle/macos/订阅账本.app"

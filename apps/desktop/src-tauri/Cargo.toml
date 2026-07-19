@@ -1,6 +1,6 @@
 [package]
 name = "subscription-ledger"
-version = "0.1.0"
+version = "0.1.1"
 description = "订阅账本 macOS 客户端"
 authors = ["azhuilab"]
 edition = "2021"
