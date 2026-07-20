@@ -252,19 +252,22 @@ pub fn load_state(app: &tauri::AppHandle) -> Result<AppStateDto, DbError> {
         Some(data) => match parse_raw_data(app, &data) {
             Ok(state) => Ok(state),
             Err(e) => {
-                // Most common cause here: the key on disk no longer matches the
-                // key the data was encrypted with (e.g. the user moved the
-                // .ledger_key file, restored from an old backup, or a previous
-                // build wrote with a different scheme). Log to stderr so the
-                // failure is visible in `tauri dev` / packaged app logs — we
-                // otherwise silently rename the user's data away.
+                // The key on disk no longer matches the key the data was
+                // encrypted with (e.g. user moved .ledger_key, restored from
+                // an old backup, or a previous build used a different scheme).
+                // Back up the unreadable file and surface the error to the UI
+                // so the user knows what happened rather than seeing an empty
+                // ledger as if nothing existed.
                 eprintln!(
-                    "[db] load_state failed; renaming ledger.db to .unreadable and starting fresh. cause: {}",
+                    "[db] load_state failed; renaming ledger.db to .unreadable. cause: {}",
                     e
                 );
                 drop(conn);
                 backup_unreadable_db(&path);
-                Ok(default_state())
+                Err(DbError::Msg(format!(
+                    "数据文件存在但无法读取（{}）。数据已备份为 ledger.db.unreadable。",
+                    e
+                )))
             }
         },
         None => Ok(default_state()),
