@@ -29,11 +29,14 @@ npm install
 | `npm run parity` | 输出固定日期的 core demo 摘要（改 `stats`/`rules` 后必跑） |
 | `npm run check` | `test:core` + `parity` + `build`（CI 同款） |
 
-桌面打包：
+## 构建：开发版与生产版
 
-```bash
-npm run tauri:build -w @ai-sub/desktop
-```
+- **开发版（热重载）**：`npm run dev`（即 `tauri dev`）。编译 Rust debug 并启动桌面 App，保存源码后自动重载。开发版与打包版共用同一份 `ledger.db` 数据目录。
+- **生产版（打包）**：`npm run tauri:build -w @ai-sub/desktop`（即 `tauri build`）。编译 release 并产出：
+  - `apps/desktop/src-tauri/target/release/bundle/macos/订阅账本.app` —— 可直接拖入 `/Applications`；
+  - `apps/desktop/src-tauri/target/release/bundle/dmg/订阅账本_*.dmg` —— 安装盘。
+  - ⚠️ 若环境缺少 `create-dmg`，Tauri 自带 dmg 打包会失败（仅留下中间 `rw.*.dmg`）。可用 `hdiutil convert <rw镜像> -format UDZO -o <目标.dmg>` 手动生成正式 dmg。
+- 构建产物均在 `target/`（已被 gitignore），不会进入仓库。
 
 签名与公证见 [docs/macos-signing.md](./docs/macos-signing.md)。
 

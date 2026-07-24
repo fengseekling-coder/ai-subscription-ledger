@@ -20,21 +20,11 @@ pub struct MonitorCheckResult {
 #[serde(rename_all = "camelCase")]
 pub struct MonitorInput {
     pub id: String,
-    #[serde(default)]
-    pub catalog_id: String,
     pub service_id: String,
     pub api_key: String,
 }
 
 // ── OpenAI ────────────────────────────────────────────────────────────────────
-
-#[derive(Deserialize)]
-struct OpenAIBilling {
-    #[serde(default)]
-    hard_limit_usd: Option<f64>,
-    #[serde(default)]
-    soft_limit_usd: Option<f64>,
-}
 
 #[derive(Deserialize)]
 struct OpenAIUsage {

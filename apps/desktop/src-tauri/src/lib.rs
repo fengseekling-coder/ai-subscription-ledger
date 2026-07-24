@@ -52,7 +52,6 @@ fn ocr_image(data: Vec<u8>, width: u32, height: u32) -> Result<String, String> {
 async fn check_monitor_cmd(monitor_id: String, service_id: String, api_key: String) -> Result<monitor::MonitorCheckResult, String> {
     let input = monitor::MonitorInput {
         id: monitor_id,
-        catalog_id: String::new(),
         service_id,
         api_key,
     };
@@ -186,10 +185,9 @@ pub fn run() {
                                 .iter()
                                 .filter_map(|v| {
                                     let id = v.get("id")?.as_str()?.to_string();
-                                    let catalog_id = v.get("catalogId").and_then(|x| x.as_str()).unwrap_or("").to_string();
                                     let service_id = v.get("serviceId")?.as_str()?.to_string();
                                     let api_key = v.get("apiKey")?.as_str()?.to_string();
-                                    Some(monitor::MonitorInput { id, catalog_id, service_id, api_key })
+                                    Some(monitor::MonitorInput { id, service_id, api_key })
                                 })
                                 .collect();
                             if inputs.is_empty() {
