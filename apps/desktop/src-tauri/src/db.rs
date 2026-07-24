@@ -54,6 +54,12 @@ pub struct AppStateDto {
     pub budget: f64,
     pub rows: Vec<serde_json::Value>,
     pub bills: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub monitors: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub appearance: Option<serde_json::Value>,
 }
 
 fn default_state() -> AppStateDto {
@@ -61,6 +67,9 @@ fn default_state() -> AppStateDto {
         budget: 500.0,
         rows: vec![],
         bills: vec![],
+        monitors: vec![],
+        language: None,
+        appearance: None,
     }
 }
 

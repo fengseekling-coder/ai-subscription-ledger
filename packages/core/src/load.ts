@@ -1,7 +1,7 @@
 import { defaultRowsSeed } from "./defaults.js";
 import { normalizeBill, normalizeRow } from "./normalize.js";
 import { moneyValue } from "./money.js";
-import type { AppState, Bill, SubscriptionRow } from "./types.js";
+import type { AppState, Bill, Monitor, SubscriptionRow } from "./types.js";
 
 // ── migrated helpers (inlined from old migrate.ts) ───────────────────────────
 
@@ -88,6 +88,7 @@ function hydrateImportedState(parsed: {
   budget?: unknown;
   rows?: unknown[];
   bills?: unknown[];
+  monitors?: unknown[];
 }): AppState {
   const rows = (Array.isArray(parsed.rows) ? parsed.rows : []).map((r) =>
     normalizeRow(r as Partial<SubscriptionRow> & Record<string, unknown>)
@@ -104,10 +105,16 @@ function hydrateImportedState(parsed: {
     const raw = (parsed as { language?: unknown }).language;
     return raw === "zh-CN" || raw === "en" || raw === "auto" ? raw : "auto";
   })();
+  const monitors: Monitor[] = Array.isArray(parsed.monitors)
+    ? (parsed.monitors as Monitor[]).filter(
+        (m) => m && typeof m === "object" && m.id && m.catalogId && m.serviceId && m.apiKey
+      )
+    : [];
   return {
     budget,
     rows,
     bills,
+    monitors,
     language,
   };
 }
@@ -116,7 +123,7 @@ function hydrateImportedState(parsed: {
 
 /** 全新用户：空账本 */
 export function createEmptyState(): AppState {
-  return { budget: 500, rows: [], bills: [] };
+  return { budget: 500, rows: [], bills: [], monitors: [] };
 }
 
 /** 开发/单测/parity：带示例订阅（不会自动写入用户数据库） */
@@ -125,7 +132,7 @@ export function createDemoState(): AppState {
   applyRowMigrations(rows);
   const bills = ensureBillsFromRows(rows, []);
   ensureSubscribedAtFromRows(rows, bills);
-  return { budget: 500, rows, bills };
+  return { budget: 500, rows, bills, monitors: [] };
 }
 
 /** @deprecated 使用 createDemoState（单测）或 createEmptyState（产品） */

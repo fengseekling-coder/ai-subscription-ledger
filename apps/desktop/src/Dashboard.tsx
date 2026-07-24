@@ -60,6 +60,28 @@ export const Dashboard = memo(function Dashboard({
   const hasBudget = Number(state.budget) > 0;
   const budgetActionLabel = hasBudget ? "编辑预算" : "添加预算";
 
+  const budgetUsedPct = useMemo(() => {
+    const budget = Number(state.budget);
+    if (!(budget > 0)) return summary.monthSpend > 0 ? 100 : 0;
+    return Math.min(100, (summary.monthSpend / budget) * 100);
+  }, [state.budget, summary.monthSpend]);
+
+  const budgetBarFillClass =
+    summary.monthSpend > Number(state.budget)
+      ? " is-over"
+      : budgetUsedPct >= 85
+        ? " is-warn"
+        : "";
+
+  const budgetProgressBar = (
+    <div className="metric__budget-bar" aria-hidden>
+      <div
+        className={"metric__budget-bar-fill" + budgetBarFillClass}
+        style={{ width: `${budgetUsedPct}%` }}
+      />
+    </div>
+  );
+
   const commitBudgetDraft = () => {
     const v = Number(draftBudget);
     if (Number.isFinite(v) && v >= 0) {
@@ -123,11 +145,15 @@ export const Dashboard = memo(function Dashboard({
       >
         {fmtMoney(summary.budgetLeft)}
       </div>
+      {hasBudget && budgetProgressBar}
       {budgetEditor}
     </>
   );
 
   if (variant === "compact") {
+    const compactMonitors = state.monitors ?? [];
+    const compactErrorCount = compactMonitors.filter((m) => m.status === "error").length;
+
     return (
       <div className="dashboard dashboard--compact" aria-label="本月摘要">
         <div className="summary-strip">
@@ -162,10 +188,27 @@ export const Dashboard = memo(function Dashboard({
               {nearestSub && <span className="summary-strip__note">{" · "}{nearestSub}</span>}
             </span>
           </div>
+          {compactErrorCount > 0 && (
+            <div className="summary-strip__item">
+              <span className="summary-strip__label">监控</span>
+              <span className="summary-strip__value" style={{ color: "var(--danger)" }}>
+                {compactErrorCount} 个异常
+              </span>
+            </div>
+          )}
         </div>
       </div>
     );
   }
+
+  const monitors = state.monitors ?? [];
+  const activeMonitors = monitors.filter((m) => m.status === "active").length;
+  const errorMonitors = monitors.filter((m) => m.status === "error").length;
+  const monitorDotClass = errorMonitors > 0
+    ? "dashboard-monitor__dot--error"
+    : activeMonitors > 0
+      ? "dashboard-monitor__dot--ok"
+      : "dashboard-monitor__dot--warn";
 
   return (
     <div className="dashboard">
@@ -189,6 +232,17 @@ export const Dashboard = memo(function Dashboard({
           {nearestSub && <div className="metric__note">{nearestSub}</div>}
         </article>
       </section>
+
+      {monitors.length > 0 && (
+        <div className="dashboard-monitor">
+          <div className={`dashboard-monitor__dot ${monitorDotClass}`} />
+          <span className="dashboard-monitor__text">
+            {activeMonitors > 0
+              ? `${activeMonitors} 个服务已连接` + (errorMonitors > 0 ? `，${errorMonitors} 个异常` : "")
+              : "尚未检查"}
+          </span>
+        </div>
+      )}
     </div>
   );
 });

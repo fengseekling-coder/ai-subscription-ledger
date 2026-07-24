@@ -24,7 +24,7 @@ const SEGMENTS: { id: CatalogSegment | "all"; label: string }[] = [
 function syncBadge(tier: CatalogEntry["syncTier"]) {
   if (tier === "paste") return <span className="catalog-badge catalog-badge--auto">可粘贴入账</span>;
   if (tier === "email") return <span className="catalog-badge">邮件（规划）</span>;
-  if (tier === "oauth") return <span className="catalog-badge">API（规划）</span>;
+  if (tier === "oauth") return <span className="catalog-badge catalog-badge--monitor">可自动监控</span>;
   return null;
 }
 

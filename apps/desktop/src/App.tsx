@@ -15,9 +15,11 @@ import { BillsView } from "./BillsView";
 import { CatalogModal } from "./CatalogModal";
 import { Dashboard } from "./Dashboard";
 import { DueDatePickerModal } from "./DueDatePickerModal";
+import { MonitorModal } from "./MonitorModal";
 import { PendingView } from "./PendingView";
 import { SettingsModal } from "./SettingsModal";
 import { resolveLang, tFor, type LangPref } from "./i18n";
+import { applyAppearance, type Appearance } from "./theme";
 import { StatsView } from "./StatsView";
 import { SubTable } from "./SubTable";
 import { buildSubTableHandlers } from "./subTableHandlers";
@@ -133,6 +135,8 @@ function useTrayMenu(state: AppState | null, summary: ReturnType<typeof computeS
 // Custom hook for window close handling
 function useWindowCloseHandler(stateRef: React.MutableRefObject<AppState | null>) {
   useEffect(() => {
+    // 纯浏览器环境（vite dev 预览）没有 Tauri 窗口
+    if (!("__TAURI_INTERNALS__" in window)) return;
     const w = getCurrentWindow();
     const unlisten = w.onCloseRequested(async (e) => {
       const current = stateRef.current;
@@ -199,6 +203,7 @@ export default function App() {
   const [showCatalog, setShowCatalog] = useState(false);
   const [duePickIndex, setDuePickIndex] = useState<number | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showMonitor, setShowMonitor] = useState(false);
   const [notifyOn, setNotifyOn] = useState(localStorage.getItem("ai-sub-notify") === "on");
   
   // Hooks
@@ -255,6 +260,18 @@ export default function App() {
   useNavigation(setMode);
   const { toggleNotify } = useRenewReminders(state, notifyOn, showNotice);
 
+  // Listen for background monitor check results
+  useEffect(() => {
+    const unlisten = listen("monitor-updated", () => {
+      loadAppState()
+        .then((s) => setState(s))
+        .catch(() => {});
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
+
   // Auto-switch from pending if empty
   useEffect(() => {
     if (mode === "pending" && pending.length === 0) setMode("subs");
@@ -269,6 +286,20 @@ export default function App() {
     setState((prev) => (prev ? { ...prev, language: next } : prev));
     showNotice(next === "en" ? "Language: English" : next === "zh-CN" ? "语言：简体中文" : "语言：跟随系统");
   }, [showNotice]);
+
+  const changeAppearance = useCallback((next: Appearance) => {
+    setState((prev) => (prev ? { ...prev, appearance: { ...prev.appearance, ...next } } : prev));
+  }, []);
+
+  // 外观：挂载即应用，偏好变化时实时刷新，并跟随系统主题切换
+  useEffect(() => {
+    applyAppearance(state?.appearance);
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => applyAppearance(state?.appearance);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [state?.appearance]);
 
   const subHandlers = useMemo(
     () =>
@@ -402,7 +433,7 @@ export default function App() {
           <div className="toolbar">
             <div className="toolbar__group">
               <button type="button" className="primary" onClick={handlePrimary}>
-                {tr.toolbar.add}
+                {mode === "bills" ? tr.toolbar.addBill : tr.toolbar.add}
               </button>
               <button type="button" onClick={() => setShowCatalog(true)}>
                 {tr.toolbar.catalog}
@@ -570,7 +601,19 @@ export default function App() {
         <SettingsModal
           language={state?.language}
           onLanguageChange={changeLanguage}
+          appearance={state?.appearance}
+          onAppearanceChange={changeAppearance}
+          monitorCount={state?.monitors?.length ?? 0}
+          onOpenMonitor={() => { setShowSettings(false); setShowMonitor(true); }}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {showMonitor && state && (
+        <MonitorModal
+          state={state}
+          onCommit={commit}
+          onClose={() => setShowMonitor(false)}
         />
       )}
     </div>

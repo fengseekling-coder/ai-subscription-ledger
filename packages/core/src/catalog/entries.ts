@@ -51,9 +51,9 @@ export const catalogEntries: CatalogEntry[] = [
   },
 
   // —— 官方 AI ——
-  { id: "chatgpt-plus", category: "官方", segment: "ai", plan: "ChatGPT Plus", feeHint: "20", recurring: true, syncTier: "none", portalUrl: "https://chat.openai.com/", tags: ["OpenAI"], rank: R_AI },
-  { id: "chatgpt-team", category: "官方", segment: "ai", plan: "ChatGPT Team", feeHint: "25", recurring: true, syncTier: "none", portalUrl: "https://chat.openai.com/", tags: ["OpenAI"], rank: R_AI + 1 },
-  { id: "claude-pro", category: "官方", segment: "ai", plan: "Claude Pro", feeHint: "20", recurring: true, syncTier: "none", portalUrl: "https://claude.ai/settings/billing", tags: ["Anthropic"], rank: R_AI + 2 },
+  { id: "chatgpt-plus", category: "官方", segment: "ai", plan: "ChatGPT Plus", feeHint: "20", recurring: true, syncTier: "oauth", portalUrl: "https://chat.openai.com/", tags: ["OpenAI"], rank: R_AI },
+  { id: "chatgpt-team", category: "官方", segment: "ai", plan: "ChatGPT Team", feeHint: "25", recurring: true, syncTier: "oauth", portalUrl: "https://chat.openai.com/", tags: ["OpenAI"], rank: R_AI + 1 },
+  { id: "claude-pro", category: "官方", segment: "ai", plan: "Claude Pro", feeHint: "20", recurring: true, syncTier: "oauth", portalUrl: "https://claude.ai/settings/billing", tags: ["Anthropic"], rank: R_AI + 2 },
   { id: "claude-api", category: "官方", segment: "ai", plan: "Claude API / Console", feeHint: "按量", recurring: false, syncTier: "paste", connectorId: "generic-bills-json", portalUrl: "https://console.anthropic.com/", tags: ["Anthropic", "API"], rank: R_AI + 3 },
   { id: "gemini-advanced", category: "官方", segment: "ai", plan: "Google Gemini Advanced", feeHint: "19.99", recurring: true, syncTier: "none", portalUrl: "https://one.google.com/", tags: ["Google"], rank: R_AI + 4 },
   { id: "copilot-m365", category: "官方", segment: "ai", plan: "Microsoft Copilot Pro", feeHint: "20", recurring: true, syncTier: "none", portalUrl: "https://account.microsoft.com/services", tags: ["Microsoft"], rank: R_AI + 5 },

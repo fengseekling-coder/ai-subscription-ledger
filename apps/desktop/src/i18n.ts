@@ -10,7 +10,7 @@ export const LANGS: { value: LangPref; label: Record<Lang, string> }[] = [
 export type Dict = {
   brand: string;
   nav: { subs: string; stats: string; expired: string; bills: string; pending: string };
-  toolbar: { add: string; catalog: string; search: string; theme: string; settings: string };
+  toolbar: { add: string; addBill: string; catalog: string; search: string; theme: string; settings: string };
   dashboard: {
     monthSpend: string;
     budgetLeft: string;
@@ -31,6 +31,15 @@ export type Dict = {
     title: string;
     language: string;
     languageDesc: string;
+    appearance: string;
+    appearanceDesc: string;
+    themeMode: string;
+    themeModeDesc: string;
+    accent: string;
+    accentDesc: string;
+    themeSystem: string;
+    themeLight: string;
+    themeDark: string;
     security: string;
     securityNote1: string;
     securityNote2: string;
@@ -92,7 +101,7 @@ export type Dict = {
 const zh: Dict = {
   brand: "订阅账本",
   nav: { subs: "概览", stats: "统计", expired: "已过期", bills: "账单", pending: "待续费" },
-  toolbar: { add: "新增订阅", catalog: "服务库", search: "搜索", theme: "深色", settings: "设置" },
+  toolbar: { add: "新增订阅", addBill: "记一笔", catalog: "服务库", search: "搜索", theme: "深色", settings: "设置" },
   dashboard: {
     monthSpend: "本月支出",
     budgetLeft: "预算剩余",
@@ -113,6 +122,15 @@ const zh: Dict = {
     title: "设置",
     language: "语言",
     languageDesc: "跟随系统时，按 macOS 偏好设置自动切换。",
+    appearance: "外观",
+    appearanceDesc: "主题模式与强调色。",
+    themeMode: "主题模式",
+    themeModeDesc: "跟随系统会按 macOS 外观自动切换浅色或深色。",
+    accent: "主题色",
+    accentDesc: "用于进度条、焦点与选中态的强调色。",
+    themeSystem: "跟随系统",
+    themeLight: "浅色",
+    themeDark: "深色",
     security: "安全",
     securityNote1: "数据使用 AES-256-GCM 加密后存储在本地。",
     securityNote2: "设备丢失且知密码时，拥有 root 或物理访问者理论上仍可读取。",
@@ -174,7 +192,7 @@ const zh: Dict = {
 const en: Dict = {
   brand: "Subscription Ledger",
   nav: { subs: "Overview", stats: "Stats", expired: "Expired", bills: "Bills", pending: "Renewals" },
-  toolbar: { add: "Add", catalog: "Catalog", search: "Search", theme: "Theme", settings: "Settings" },
+  toolbar: { add: "Add", addBill: "Add bill", catalog: "Catalog", search: "Search", theme: "Theme", settings: "Settings" },
   dashboard: {
     monthSpend: "This month",
     budgetLeft: "Budget left",
@@ -195,6 +213,15 @@ const en: Dict = {
     title: "Settings",
     language: "Language",
     languageDesc: "Follow system matches your macOS locale.",
+    appearance: "Appearance",
+    appearanceDesc: "Theme mode and accent color.",
+    themeMode: "Theme mode",
+    themeModeDesc: "System follows your macOS appearance for light or dark.",
+    accent: "Accent color",
+    accentDesc: "Used for progress bars, focus and selected states.",
+    themeSystem: "System",
+    themeLight: "Light",
+    themeDark: "Dark",
     security: "Security",
     securityNote1: "All data is encrypted with AES-256-GCM and stored locally.",
     securityNote2: "If the device is lost and the OS password is known, root or physical access may still expose the data.",

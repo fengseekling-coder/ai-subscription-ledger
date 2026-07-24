@@ -385,7 +385,7 @@ export function SubscriptionFormModal({
     if (value) {
       const num = moneyValue(value);
       if (num < 0 || isNaN(num)) {
-        setFeeError("{ft.form.feeError}");
+        setFeeError(ft.form.feeError);
       } else {
         setFeeError(null);
       }
@@ -593,7 +593,7 @@ export function SubscriptionFormModal({
                     <textarea
                       rows={3}
                       className="textarea"
-                      placeholder="{ft.form.pastePlaceholder}"
+                      placeholder={ft.form.pastePlaceholder}
                       value={pasteText}
                       onChange={(e) => setPasteText(e.target.value)}
                     />
@@ -734,7 +734,7 @@ export function SubscriptionFormModal({
                   defaultValue={draft.usage}
                   rows={2}
                   className="textarea"
-                  placeholder="{ft.form.notePlaceholder}"
+                  placeholder={ft.form.notePlaceholder}
                 />
               </div>
 

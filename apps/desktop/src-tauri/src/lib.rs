@@ -1,12 +1,17 @@
 mod db;
+mod monitor;
 mod ocr;
 
 use db::{load_state, save_state, AppStateDto};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
+
+/// Background flag: set to `true` to stop the monitor scheduler thread.
+static MONITOR_SHUTDOWN: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
 fn get_app_state(app: tauri::AppHandle) -> Result<AppStateDto, String> {
@@ -39,6 +44,33 @@ fn ocr_image(data: Vec<u8>, width: u32, height: u32) -> Result<String, String> {
         return Err("图片数据长度与尺寸不匹配".to_string());
     }
     ocr::ocr_image_rgba(&data, width as usize, height as usize)
+}
+
+// ── Monitor commands ──────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn check_monitor_cmd(monitor_id: String, service_id: String, api_key: String) -> Result<monitor::MonitorCheckResult, String> {
+    let input = monitor::MonitorInput {
+        id: monitor_id,
+        catalog_id: String::new(),
+        service_id,
+        api_key,
+    };
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+    Ok(monitor::check_monitor(&client, &input).await)
+}
+
+#[tauri::command]
+async fn check_all_monitors_cmd(monitors: Vec<monitor::MonitorInput>) -> Result<Vec<monitor::MonitorCheckResult>, String> {
+    Ok(monitor::check_all_monitors(&monitors).await)
+}
+
+#[tauri::command]
+fn get_supported_services() -> Vec<monitor::SupportedService> {
+    monitor::supported_services()
 }
 
 #[tauri::command]
@@ -103,6 +135,7 @@ pub fn run() {
                         }
                     }
                     "quit" => {
+                        MONITOR_SHUTDOWN.store(true, Ordering::Relaxed);
                         app.exit(0);
                     }
                     _ => {}
@@ -129,6 +162,71 @@ pub fn run() {
 
             let _tray = tray_builder.build(app)?;
 
+            // ── Background monitor scheduler ────────────────────────────────
+            // Check all monitors every 6 hours; emit "monitor-updated" event
+            // so the frontend can refresh state. The flag is checked each
+            // iteration so the thread exits cleanly when the app quits.
+            {
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    while !MONITOR_SHUTDOWN.load(Ordering::Relaxed) {
+                        std::thread::sleep(std::time::Duration::from_secs(6 * 60 * 60));
+                        if MONITOR_SHUTDOWN.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        let handle = app_handle.clone();
+                        // Best-effort: load state, run checks, emit event.
+                        // Errors are silently ignored to avoid crashing the thread.
+                        if let Ok(mut state) = load_state(&handle) {
+                            let monitors_json = &state.monitors;
+                            if monitors_json.is_empty() {
+                                continue;
+                            }
+                            let inputs: Vec<monitor::MonitorInput> = monitors_json
+                                .iter()
+                                .filter_map(|v| {
+                                    let id = v.get("id")?.as_str()?.to_string();
+                                    let catalog_id = v.get("catalogId").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                    let service_id = v.get("serviceId")?.as_str()?.to_string();
+                                    let api_key = v.get("apiKey")?.as_str()?.to_string();
+                                    Some(monitor::MonitorInput { id, catalog_id, service_id, api_key })
+                                })
+                                .collect();
+                            if inputs.is_empty() {
+                                continue;
+                            }
+                            let results =
+                                futures_lite::future::block_on(monitor::check_all_monitors(&inputs));
+                            let now = chrono::Utc::now().to_rfc3339();
+                            let mut updated_monitors = monitors_json.clone();
+                            for r in &results {
+                                if let Some(v) = updated_monitors.iter_mut().find(|m| {
+                                    m.get("id").and_then(|x| x.as_str()) == Some(r.monitor_id.as_str())
+                                }) {
+                                    if let Some(obj) = v.as_object_mut() {
+                                        obj.insert("lastChecked".into(), serde_json::Value::String(now.clone()));
+                                        obj.insert("status".into(), serde_json::Value::String(r.status.clone()));
+                                        obj.insert("statusDetail".into(), serde_json::Value::String(r.status_detail.clone()));
+                                        obj.insert("remotePlan".into(), serde_json::Value::String(r.remote_plan.clone()));
+                                        obj.insert("remoteAmount".into(), serde_json::json!(r.remote_amount));
+                                        obj.insert("remoteRenewalDate".into(), serde_json::Value::String(r.remote_renewal_date.clone()));
+                                        obj.insert("errorMessage".into(), serde_json::Value::String(r.error_message.clone()));
+                                    }
+                                }
+                            }
+                            state.monitors = updated_monitors;
+                            if let Err(e) = save_state(&handle, &state) {
+                                eprintln!("[monitor-scheduler] save_state failed: {}", e);
+                            }
+                            if let Err(e) = handle.emit("monitor-updated", ()) {
+                                eprintln!("[monitor-scheduler] emit event failed: {}", e);
+                            }
+                        }
+                    }
+                    eprintln!("[monitor-scheduler] thread exiting");
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -136,6 +234,9 @@ pub fn run() {
             set_app_state,
             ocr_image,
             update_tray_menu,
+            check_monitor_cmd,
+            check_all_monitors_cmd,
+            get_supported_services,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

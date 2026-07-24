@@ -1,14 +1,33 @@
 import { LANGS, type LangPref, resolveLang, tFor } from "./i18n";
 import type { AppState } from "@ai-sub/core";
 import { ModalCloseButton } from "./ui/Icon";
+import {
+  ACCENT_ORDER,
+  swatchColor,
+  type AccentKey,
+  type Appearance,
+  type ThemeMode,
+} from "./theme";
 
 interface Props {
   onClose: () => void;
   language: AppState["language"];
   onLanguageChange: (next: LangPref) => void;
+  appearance?: Appearance;
+  onAppearanceChange: (next: Appearance) => void;
+  monitorCount: number;
+  onOpenMonitor: () => void;
 }
 
-export function SettingsModal({ onClose, language, onLanguageChange }: Props) {
+export function SettingsModal({
+  onClose,
+  language,
+  onLanguageChange,
+  appearance,
+  onAppearanceChange,
+  monitorCount,
+  onOpenMonitor,
+}: Props) {
   const t = tFor(resolveLang(language));
   const uiLang = resolveLang(language);
   return (
@@ -42,6 +61,77 @@ export function SettingsModal({ onClose, language, onLanguageChange }: Props) {
                 );
               })}
             </div>
+          </div>
+
+          <div className="settings-row">
+            <div className="settings-row__text">
+              <span className="settings-row__label">{t.settings.themeMode}</span>
+              <span className="settings-row__desc">{t.settings.themeModeDesc}</span>
+            </div>
+            <div className="seg-nav" role="radiogroup" aria-label={t.settings.themeMode}>
+              {(["system", "light", "dark"] as ThemeMode[]).map((opt) => {
+                const isActive = (appearance?.mode ?? "system") === opt;
+                const label =
+                  opt === "system"
+                    ? t.settings.themeSystem
+                    : opt === "light"
+                      ? t.settings.themeLight
+                      : t.settings.themeDark;
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    role="radio"
+                    aria-checked={isActive}
+                    className={isActive ? "active" : ""}
+                    onClick={() => onAppearanceChange({ ...appearance, mode: opt })}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="settings-row">
+            <div className="settings-row__text">
+              <span className="settings-row__label">{t.settings.accent}</span>
+              <span className="settings-row__desc">{t.settings.accentDesc}</span>
+            </div>
+            <div className="accent-swatches" role="radiogroup" aria-label={t.settings.accent}>
+              {ACCENT_ORDER.map((key: AccentKey) => {
+                const isActive = (appearance?.accent ?? "green") === key;
+                const color = swatchColor(key);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    role="radio"
+                    aria-checked={isActive}
+                    aria-label={key}
+                    title={key}
+                    className={"accent-swatch" + (isActive ? " is-active" : "")}
+                    style={{ background: color, color }}
+                    onClick={() => onAppearanceChange({ ...appearance, accent: key })}
+                  >
+                    <span className={"accent-swatch__check" + (key === "slate" ? " accent-swatch__check--dark" : "")}>✓</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="settings-row">
+            <div className="settings-row__text">
+              <span className="settings-row__label">自动监控</span>
+              <span className="settings-row__desc">通过 API Key 自动查询订阅状态。</span>
+              {monitorCount > 0 && (
+                <span className="settings-row__hint">已配置 {monitorCount} 个监控</span>
+              )}
+            </div>
+            <button type="button" className="btn btn--sm" onClick={onOpenMonitor}>
+              管理
+            </button>
           </div>
 
           <div className="settings-row">

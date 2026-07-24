@@ -16,3 +16,7 @@ scripts/remove-new-plans.py
 *.sqlite3
 .env
 .env.*
+
+# Local-only directories (never commit)
+.claude/
+.workbuddy/
