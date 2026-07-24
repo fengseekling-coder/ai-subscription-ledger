@@ -1,9 +1,16 @@
 import { nextMonthlyDueDate, normalizeDateInput, todayLocalISO } from "./dates.js";
-import { moneyValue } from "./money.js";
+import { moneyValue, looksLikeUsdFee, USD_CNY_RATE } from "./money.js";
 import { normalizeBill, normalizeRow } from "./normalize.js";
 import { isActiveSubscription, needsDueDate } from "./rules.js";
 import { rowFromCatalogId } from "./catalog/from-catalog.js";
 import type { AppState, Bill, SubscriptionRow } from "./types.js";
+
+/** 费用字符串 → 记账用的人民币金额：美元按参考汇率折算，保证预算/统计口径统一为 ¥。 */
+function feeToCnyAmount(fee: string | number): number {
+  const v = moneyValue(fee);
+  if (v <= 0) return 0;
+  return looksLikeUsdFee(fee) ? Math.round(v * USD_CNY_RATE * 100) / 100 : v;
+}
 
 export function subById(state: AppState, id: string): SubscriptionRow | undefined {
   return state.rows.find((r) => r.id === id);
@@ -64,14 +71,19 @@ export function updateRowField(
   if (index < 0 || index >= state.rows.length) {
     return { error: "索引超出范围" };
   }
+  const raw = String(value).trim();
   const rows = state.rows.slice();
-  const row = { ...rows[index], [key]: String(value).trim() } as SubscriptionRow;
-  if (key === "category" || key === "plan" || key === "fee") {
-    rows[index] = normalizeRow(row);
+  let row: SubscriptionRow;
+  if (key === "subscribed" || key === "expired") {
+    // 布尔字段需转回 boolean，避免 UI 的 string 值把字段污染成字符串
+    row = { ...rows[index], [key]: raw === "true" || raw === "1" } as SubscriptionRow;
+  } else if (key === "category" || key === "plan" || key === "fee") {
+    row = normalizeRow({ ...rows[index], [key]: raw });
   } else {
-    rows[index] = row;
+    row = { ...rows[index], [key]: raw };
   }
-  if (!rows[index].subscribed) rows[index].dueDate = "";
+  if (!row.subscribed) row.dueDate = "";
+  rows[index] = row;
   return { ...state, rows };
 }
 
@@ -180,7 +192,7 @@ export function renewRow(state: AppState, index: number, ref = new Date()): AppS
     expired: false,
   });
   const bills = [...state.bills];
-  const amt = moneyValue(rows[index].fee);
+  const amt = feeToCnyAmount(rows[index].fee);
   if (amt > 0) {
     const monthKey = todayLocalISO().slice(0, 7);
     const dup = bills.some(
@@ -213,7 +225,7 @@ export function addBill(state: AppState, ref = new Date()): AppState | { error: 
     ...state.bills,
     normalizeBill({
       subscriptionId: pick.id,
-      amount: moneyValue(pick.fee),
+      amount: feeToCnyAmount(pick.fee),
       paidAt: todayLocalISO(),
       orderId: "",
       note: "",

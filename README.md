@@ -41,6 +41,8 @@ npm run tauri:build -w @ai-sub/desktop
 
 应用数据目录下的 `ledger.db`（SQLite KV，键 `ai-subscription-tracker-v3`）。导出 JSON 为明文备份，请自行保管。
 
+> **数据互通说明**：仓库根目录的 `ai_subscription_tracker.html` 是独立单文件版（localStorage），与桌面端 App（`ledger.db`）**数据互不互通**——两边各自独立存储、互不可见。它已被 `.gitignore` 忽略，仅作本地草稿 / 备用。
+
 ## 仓库结构
 
 ```

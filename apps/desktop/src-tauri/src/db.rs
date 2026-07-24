@@ -120,6 +120,16 @@ fn write_key_file(path: &Path, key: &[u8; 32]) -> Result<(), DbError> {
     #[cfg(not(unix))]
     {
         std::fs::write(path, key).map_err(|e| DbError::Msg(e.to_string()))?;
+        // Windows：AppData 默认仅当前用户可访问，但显式移除继承 ACL 并仅授予当前用户，
+        // 等价于 unix 的 0o600（文件仅属主可读写）。icacls 不可用时静默忽略——目录隔离已提供保护。
+        if let Ok(user) = std::env::var("USERNAME") {
+            let _ = std::process::Command::new("icacls")
+                .arg(path)
+                .arg("/inheritance:r")
+                .arg("/grant:r")
+                .arg(format!("{}:(F)", user))
+                .status();
+        }
         Ok(())
     }
 }

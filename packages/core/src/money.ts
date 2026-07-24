@@ -3,7 +3,9 @@ export const USD_CNY_RATE = 7.2;
 
 export function moneyValue(raw: unknown): number {
   if (raw === undefined || raw === null) return 0;
-  const s = String(raw).replace(/[¥￥$,\s/月元]/g, "");
+  const s = String(raw)
+    .replace(/\bU\.?S\.?D?\s*\$?\s*/gi, "") // 去掉 US$ / USD / U.S.$ 等美元前缀，避免残留字母使 parseFloat 得 NaN
+    .replace(/[¥￥$,\s/月元]/g, "");
   const n = parseFloat(s);
   return Number.isFinite(n) ? n : 0;
 }
