@@ -25,10 +25,12 @@ npm install
 |------|------|
 | `npm run dev` | 启动 Tauri 桌面开发（`apps/desktop`） |
 | `npm run build` | 构建 core + 桌面前端 |
-| `npm run test:core` | 运行 `@ai-sub/core` 单元测试 |
+| `npm run test` | 运行 core + 桌面前端全部测试 |
+| `npm run test:core` | 只跑 `@ai-sub/core` 单元测试 |
+| `npm run test:desktop` | 只跑桌面前端测试（jsdom + Testing Library） |
 | `npm run parity` | 统计口径回归守卫：与 `scripts/parity-baseline.json` 比对，漂移则失败（改 `stats`/`rules`/`dates` 后必跑） |
 | `npm run parity -- --update` | 认可当前输出并重写基准（确认是预期改动后才用，需连同代码一起提交） |
-| `npm run check` | `test:core` + `parity` + `build`（CI 同款） |
+| `npm run check` | `test` + `parity` + `build`（CI 同款） |
 | `npm run lint` | ESLint（含 `react-hooks`，桌面前端生效） |
 
 Rust 侧（在 `apps/desktop/src-tauri` 下执行，CI 同款）：
