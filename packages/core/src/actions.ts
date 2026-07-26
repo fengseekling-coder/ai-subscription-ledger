@@ -1,16 +1,9 @@
 import { formatDate, nextMonthlyDueDate, normalizeDateInput } from "./dates.js";
-import { moneyValue, looksLikeUsdFee, USD_CNY_RATE } from "./money.js";
+import { feeToCnyAmount, moneyValue } from "./money.js";
 import { normalizeBill, normalizeRow } from "./normalize.js";
 import { isActiveSubscription, needsDueDate } from "./rules.js";
 import { rowFromCatalogId } from "./catalog/from-catalog.js";
 import type { AppState, Bill, SubscriptionRow } from "./types.js";
-
-/** 费用字符串 → 记账用的人民币金额：美元按参考汇率折算，保证预算/统计口径统一为 ¥。 */
-function feeToCnyAmount(fee: string | number): number {
-  const v = moneyValue(fee);
-  if (v <= 0) return 0;
-  return looksLikeUsdFee(fee) ? Math.round(v * USD_CNY_RATE * 100) / 100 : v;
-}
 
 export function subById(state: AppState, id: string): SubscriptionRow | undefined {
   return state.rows.find((r) => r.id === id);

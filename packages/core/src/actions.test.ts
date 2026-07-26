@@ -20,6 +20,7 @@ import {
   type BillDraft,
 } from "./actions.js";
 import { USD_CNY_RATE } from "./money.js";
+import { spendByCategory } from "./analytics.js";
 import { loadFromJson } from "./load.js";
 import type { AppState, SubscriptionRow } from "./types.js";
 
@@ -496,5 +497,44 @@ describe("setBudget", () => {
   it("falls back to the default on negative or non-finite input", () => {
     expect(setBudget(stateWith([]), -1).budget).toBe(500);
     expect(setBudget(stateWith([]), Number.NaN).budget).toBe(500);
+  });
+});
+
+describe("feeToCnyAmount 口径统一", () => {
+  const REF_MONTH = new Date("2026-07-15T09:00:00");
+
+  // 回归：feeMonthlyEst 曾用裸 moneyValue，而账单入库走 feeToCnyAmount，
+  // 于是统计页同一行的「本月支出」与「月费参考」差出一个汇率倍数。
+  it("统计页的月费参考与账单金额使用同一货币基准", () => {
+    const s = stateWith([{ fee: "US$20", dueDate: "2026-08-01" }]);
+    const draft = billDraftFor(s, REF_MONTH);
+    if ("error" in draft) throw new Error(draft.error);
+    const withBill = unwrap(addBillWithDetails(s, draft, REF_MONTH));
+
+    const cat = spendByCategory(withBill, "2026-07", REF_MONTH)[0];
+    expect(cat.monthSpend).toBeCloseTo(20 * USD_CNY_RATE, 2);
+    expect(cat.feeMonthlyEst).toBeCloseTo(20 * USD_CNY_RATE, 2);
+    expect(cat.feeMonthlyEst).toBeCloseTo(cat.monthSpend, 2);
+  });
+
+  it("人民币费用不做折算", () => {
+    const s = stateWith([{ fee: "49", dueDate: "2026-08-01" }]);
+    const cat = spendByCategory(s, "2026-07", REF_MONTH)[0];
+    expect(cat.feeMonthlyEst).toBe(49);
+  });
+
+  it("过期订阅不计入月费参考", () => {
+    const s = stateWith([{ fee: "US$20", dueDate: "2026-07-01" }]);
+    const cat = spendByCategory(s, "2026-07", REF_MONTH)[0];
+    expect(cat.activeCount).toBe(0);
+    expect(cat.feeMonthlyEst).toBe(0);
+  });
+
+  it("spendByCategory 的 ref 可注入：有效性按 ref 而非真实时钟判定", () => {
+    const s = stateWith([{ fee: "US$20", dueDate: "2026-07-20" }]);
+    // ref 在到期日之前 → 有效
+    expect(spendByCategory(s, "2026-07", new Date("2026-07-15T09:00:00"))[0].activeCount).toBe(1);
+    // ref 在到期日之后 → 已过期
+    expect(spendByCategory(s, "2026-07", new Date("2026-08-15T09:00:00"))[0].activeCount).toBe(0);
   });
 });

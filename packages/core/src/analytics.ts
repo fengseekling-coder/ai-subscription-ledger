@@ -1,6 +1,6 @@
 import { billsForCalendarMonth, monthSpendFromBillsOnly } from "./stats.js";
 import { categoryClass, isActiveSubscription } from "./rules.js";
-import { moneyValue } from "./money.js";
+import { feeToCnyAmount } from "./money.js";
 import type { AppState, Bill } from "./types.js";
 
 export type CategorySpendRow = {
@@ -19,7 +19,11 @@ export type MonthSpendRow = {
   billCount: number;
 };
 
-export function spendByCategory(state: AppState, monthKey?: string): CategorySpendRow[] {
+export function spendByCategory(
+  state: AppState,
+  monthKey?: string,
+  ref = new Date()
+): CategorySpendRow[] {
   const mk = monthKey;
   const monthBills = billsForCalendarMonth(state.bills, mk);
   const subById = new Map(state.rows.map((r) => [r.id, r]));
@@ -34,7 +38,6 @@ export function spendByCategory(state: AppState, monthKey?: string): CategorySpe
     agg.set(cat, cur);
   }
 
-  const ref = new Date();
   const rows: CategorySpendRow[] = [];
   const categories = new Set<string>();
   state.rows.forEach((r) => categories.add(r.category?.trim() || "其他"));
@@ -47,9 +50,11 @@ export function spendByCategory(state: AppState, monthKey?: string): CategorySpe
     const spend = agg.get(category)?.spend ?? 0;
     const subs = state.rows.filter((r) => (r.category?.trim() || "其他") === category);
     const activeCount = subs.filter((r) => isActiveSubscription(r, ref)).length;
+    // 必须用 feeToCnyAmount 而非裸 moneyValue：monthSpend 来自账单（入库时已折算成 ¥），
+    // 这两列在统计页并排显示。若这里不折算，美元订阅会让同一行差出一个汇率倍数。
     const feeMonthlyEst = subs
       .filter((r) => isActiveSubscription(r, ref))
-      .reduce((s, r) => s + moneyValue(r.fee), 0);
+      .reduce((s, r) => s + feeToCnyAmount(r.fee), 0);
     rows.push({
       category,
       cls: categoryClass(category),
