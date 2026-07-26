@@ -1,8 +1,7 @@
 import {
   deleteRow,
-  fmtMoney,
+  feeDisplayParts,
   markUnrenewed,
-  moneyValue,
   renewRow,
   type AppState,
   type SubscriptionRow,
@@ -19,6 +18,12 @@ type Props = {
   showNotice: (text: string, danger?: boolean) => void;
 };
 
+/** 与订阅表同一套费用展示：美元保留 $ 并给出 ≈¥ 约价，避免把 $20 显示成 ¥20。 */
+function feeLabel(fee: string): string {
+  const { primary, approx } = feeDisplayParts(fee);
+  return approx ? `${primary} ${approx}` : primary;
+}
+
 export function PendingView({ state, pending, onCommit, showNotice }: Props) {
   const t = tFor(resolveLang(state.language)).pending;
   return (
@@ -29,7 +34,7 @@ export function PendingView({ state, pending, onCommit, showNotice }: Props) {
             <div>
               <div className="renew-item__plan">{row.plan}</div>
               <div className="renew-item__meta">
-                {t.meta(row.dueDate, left ?? 0, fmtMoney(moneyValue(row.fee)))}
+                {t.meta(row.dueDate, left ?? 0, feeLabel(row.fee))}
               </div>
             </div>
             <div className="due-row-actions" style={{ display: "inline-flex" }}>
