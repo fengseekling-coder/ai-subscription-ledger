@@ -17,7 +17,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { readImage } from "@tauri-apps/plugin-clipboard-manager";
 import { useEffect, useRef, useState } from "react";
 import { CalendarPicker } from "./CalendarPicker";
-import { resolveLang, tFor } from "./i18n";
+import { resolveLang, tFor, type Dict } from "./i18n";
 import { Icon, ModalCloseButton } from "./ui/Icon";
 
 export type SubscriptionFormDraft = {
@@ -31,12 +31,26 @@ export type SubscriptionFormDraft = {
   expired: boolean;
 };
 
-const CATEGORY_OPTIONS = [
-  { value: "官方", label: "官方" },
-  { value: "中转", label: "中转" },
-  { value: "中转额度包", label: "额度" },
-  { value: "其他", label: "其他" },
-] as const;
+/**
+ * 分类选项。value 是写进账本的**数据值**，必须保持中文原样；
+ * 只有 label 走字典本地化（与 SubTable 的 getCategoryStyle 同一套规则）。
+ */
+const CATEGORY_VALUES = ["官方", "中转", "中转额度包", "其他"] as const;
+
+function categoryLabel(value: string, t: Dict["form"]): string {
+  switch (value) {
+    case "官方":
+      return t.catOfficial;
+    case "中转":
+      return t.catRelay;
+    case "中转额度包":
+      return t.catCredit;
+    case "其他":
+      return t.catOther;
+    default:
+      return value;
+  }
+}
 
 /** 从解析结果提取表单字段值，autoMatch 为 true 时自动匹配已有订阅 */
 function extractFields(
@@ -64,7 +78,7 @@ function extractFields(
     matchedPlan?: string;
   } = {};
 
-  // {ft.form.dates}范围：优先解析，connector 的条件判断不会覆盖已填字段
+  // 日期范围：优先解析，connector 的条件判断不会覆盖已填字段
   const parseDateStr = (raw: string): string | null => {
     // 明确的 MM/DD/YYYY（避免整段文本去非数字后位数 > 8 时漏匹配）
     const slash = raw.match(/(\d{2})\/(\d{2})\/(\d{4})/);
@@ -248,7 +262,7 @@ export function SubscriptionFormModal({
       const img = await readImage();
       const [size, rgba] = await Promise.all([img.size(), img.rgba()]);
       if (size.width === 0 || size.height === 0) {
-        showModalNotice("剪贴板无图片", true);
+        showModalNotice(ft.form.clipboardNoImage, true);
         return;
       }
       const ocrText = await invoke<string>("ocr_image", {
@@ -277,15 +291,15 @@ export function SubscriptionFormModal({
         } else {
           setPasteText(ocrText);
           setMatchedSub(null);
-          showModalNotice("未匹配到已有订阅，请手动选择或新建");
+          showModalNotice(ft.form.noMatchedSub);
         }
       } else {
-        showModalNotice("未识别到文字", true);
+        showModalNotice(ft.form.ocrNoText, true);
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("OCR error:", msg);
-      showModalNotice(`图片识别失败: ${msg}`, true);
+      showModalNotice(ft.form.ocrFailed(msg), true);
     } finally {
       setOcrLoading(false);
     }
@@ -357,12 +371,12 @@ export function SubscriptionFormModal({
     }
 
     if (filled > 0) {
-      showModalNotice(`已填充 ${filled} 个字段`);
+      showModalNotice(ft.form.filled(filled));
       setPasteText("");
       setPasteOpen(false);
       setDateErrors({});
     } else {
-      showModalNotice("未识别到可填充的字段", true);
+      showModalNotice(ft.form.noFillable, true);
     }
   };
 
@@ -412,10 +426,10 @@ export function SubscriptionFormModal({
         <div className="modal-header">
           <div className="modal-header__text">
             <h2 id="modal-title" className="modal-title">
-              {isAdd ? "新增订阅" : "编辑订阅"}
+              {isAdd ? ft.form.addTitle : ft.form.editTitle}
             </h2>
             <p className="modal-subtitle">
-              {isAdd ? "填写套餐与续费信息，或粘贴订单快速填充" : "修改套餐、金额与续费日期"}
+              {isAdd ? ft.form.addSubtitle : ft.form.editSubtitle}
             </p>
           </div>
           <ModalCloseButton className="modal-close" onClick={onClose} />
@@ -440,7 +454,7 @@ export function SubscriptionFormModal({
 
               if (!subValidation.valid) {
                 showModalNotice(
-                  subValidation.message || "订阅日期格式无效",
+                  subValidation.message || ft.form.subDateInvalid,
                   true
                 );
                 setDateErrors((prev) => ({
@@ -452,7 +466,7 @@ export function SubscriptionFormModal({
               }
               if (!dueValidation.valid) {
                 showModalNotice(
-                  dueValidation.message || "续费日期格式无效",
+                  dueValidation.message || ft.form.dueDateInvalid,
                   true
                 );
                 setDateErrors((prev) => ({
@@ -468,20 +482,20 @@ export function SubscriptionFormModal({
               const fee = String(fd.get("fee") ?? "").trim();
 
               if (!category) {
-                showModalNotice("请选择分类", true);
+                showModalNotice(ft.form.categoryRequired, true);
                 setIsSubmitting(false);
                 return;
               }
               if (!plan) {
-                showModalNotice("请填写套餐名称", true);
+                showModalNotice(ft.form.planRequired, true);
                 setIsSubmitting(false);
                 return;
               }
               if (fee) {
                 const feeNum = moneyValue(fee);
                 if (feeNum < 0 || isNaN(feeNum)) {
-                  showModalNotice("金额格式无效", true);
-                  setFeeError("金额格式无效");
+                  showModalNotice(ft.form.feeError, true);
+                  setFeeError(ft.form.feeError);
                   setIsSubmitting(false);
                   return;
                 }
@@ -528,7 +542,7 @@ export function SubscriptionFormModal({
                       subscribed: true,
                     });
                     if ("error" in restored) {
-                      showModalNotice("恢复订阅失败", true);
+                      showModalNotice(ft.form.restoreFailed, true);
                       setIsSubmitting(false);
                       return;
                     }
@@ -541,7 +555,7 @@ export function SubscriptionFormModal({
                   }
                   onClose();
                   showModalNotice(
-                    `已为「${matched.plan}」添加账单 ${amount} 元`
+                    ft.form.billAdded(matched.plan, String(amount))
                   );
                   setIsSubmitting(false);
                   return;
@@ -616,11 +630,11 @@ export function SubscriptionFormModal({
                         disabled={ocrLoading}
                       >
                         {ocrLoading ? (
-                          "识别中…"
+                          ft.form.parsing
                         ) : (
                           <>
                             <Icon name="camera" size={14} />
-                            粘贴图片 OCR
+                            {ft.form.parseOcr}
                           </>
                         )}
                       </button>
@@ -646,18 +660,18 @@ export function SubscriptionFormModal({
                   role="radiogroup"
                   aria-labelledby="sub-category-label"
                 >
-                  {CATEGORY_OPTIONS.map((opt) => (
+                  {CATEGORY_VALUES.map((value) => (
                     <button
-                      key={opt.value}
+                      key={value}
                       type="button"
                       role="radio"
-                      aria-checked={category === opt.value}
+                      aria-checked={category === value}
                       className={`category-chip${
-                        category === opt.value ? " is-selected" : ""
+                        category === value ? " is-selected" : ""
                       }`}
-                      onClick={() => setCategory(opt.value)}
+                      onClick={() => setCategory(value)}
                     >
-                      {opt.label}
+                      {categoryLabel(value, ft.form)}
                     </button>
                   ))}
                 </div>
@@ -698,6 +712,7 @@ export function SubscriptionFormModal({
                   <label>{ft.form.subDate}</label>
                   <input type="hidden" name="subscribedAt" value={subDate} />
                   <CalendarPicker
+                    language={language}
                     value={subDate}
                     onChange={handleSubDateChange}
                     isOpen={pickerOpen === "sub"}
@@ -714,6 +729,7 @@ export function SubscriptionFormModal({
                   <label>{ft.form.dueDate}</label>
                   <input type="hidden" name="dueDate" value={dueDate} />
                   <CalendarPicker
+                    language={language}
                     value={dueDate}
                     onChange={handleDueDateChange}
                     isOpen={pickerOpen === "due"}
@@ -788,7 +804,7 @@ export function SubscriptionFormModal({
               type="button"
               className="btn btn--danger"
               onClick={() => {
-                if (!confirm(`确定删除「${editRow.plan}」？`)) return;
+                if (!confirm(ft.form.confirmDelete(editRow.plan))) return;
                 const result = deleteRow(state, editIndex);
                 if ("error" in result) {
                   showModalNotice(result.error, true);
@@ -811,7 +827,7 @@ export function SubscriptionFormModal({
               onClick={onClose}
               disabled={isSubmitting}
             >
-              取消
+              {ft.form.cancel}
             </button>
             <button
               type="submit"

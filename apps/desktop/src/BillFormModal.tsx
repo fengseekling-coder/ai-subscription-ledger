@@ -116,6 +116,7 @@ export function BillFormModal({ mode, billId, draft, state, onClose, onCommit, o
             <div className="form-field form-field--picker">
               <label>{t.fieldPaidAt}</label>
               <CalendarPicker
+                language={language}
                 value={paidAt}
                 onChange={(iso) => {
                   setPaidAt(iso);

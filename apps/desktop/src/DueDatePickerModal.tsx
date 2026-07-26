@@ -1,18 +1,23 @@
+import type { AppState } from "@ai-sub/core";
 import { useEffect, useState } from "react";
 import { CalendarPicker } from "./CalendarPicker";
+import { resolveLang, tFor } from "./i18n";
 import { ModalCloseButton } from "./ui/Icon";
 
 export function DueDatePickerModal({
   plan,
   defaultValue,
+  language,
   onCancel,
   onConfirm,
 }: {
   plan: string;
   defaultValue: string;
+  language: AppState["language"];
   onCancel: () => void;
   onConfirm: (isoDate: string) => void;
 }) {
+  const t = tFor(resolveLang(language)).duePicker;
   const [value, setValue] = useState(defaultValue);
 
   useEffect(() => {
@@ -28,7 +33,7 @@ export function DueDatePickerModal({
       <div className="modal__backdrop" onClick={onCancel} />
       <div className="modal__panel" style={{ maxWidth: 400 }}>
         <div className="modal__head">
-          <h2 className="modal__title">设置续费日</h2>
+          <h2 className="modal__title">{t.title}</h2>
           <ModalCloseButton onClick={onCancel} />
         </div>
         <form
@@ -42,16 +47,16 @@ export function DueDatePickerModal({
             {plan}
           </p>
           <div className="form-field">
-            <label>续费日</label>
-            <CalendarPicker value={value} onChange={setValue} />
+            <label>{t.label}</label>
+            <CalendarPicker value={value} onChange={setValue} language={language} />
           </div>
           <div className="modal__foot">
             <button type="button" onClick={onCancel}>
-              取消
+              {t.cancel}
             </button>
             <div className="modal__foot-actions">
               <button type="submit" className="primary">
-                确定
+                {t.confirm}
               </button>
             </div>
           </div>

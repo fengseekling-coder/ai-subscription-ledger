@@ -83,8 +83,25 @@ export type Dict = {
     adding: string;
     saving: string;
     matched: (plan: string) => string;
-    selectDate: string;
     feeError: string;
+    /** 分类选项的展示名。value 仍是中文数据值，只有 label 本地化。 */
+    catOfficial: string;
+    catRelay: string;
+    catCredit: string;
+    catOther: string;
+    categoryRequired: string;
+    planRequired: string;
+    subDateInvalid: string;
+    dueDateInvalid: string;
+    clipboardNoImage: string;
+    ocrNoText: string;
+    ocrFailed: (msg: string) => string;
+    noMatchedSub: string;
+    filled: (n: number) => string;
+    noFillable: string;
+    restoreFailed: string;
+    billAdded: (plan: string, amount: string) => string;
+    confirmDelete: (plan: string) => string;
   };
   table: {
     category: string;
@@ -111,6 +128,17 @@ export type Dict = {
     catRelay: string;
     catCredit: string;
     unrenewedPrompt: (plan: string) => string;
+  };
+  duePicker: {
+    title: string;
+    label: string;
+    cancel: string;
+    confirm: string;
+  };
+  calendar: {
+    placeholder: string;
+    prevMonth: string;
+    nextMonth: string;
   };
   stats: {
     byCategory: string;
@@ -234,8 +262,24 @@ const zh: Dict = {
     adding: "添加中…",
     saving: "保存中…",
     matched: (plan) => `已匹配「${plan}」，确认后将为其添加账单`,
-    selectDate: "选择日期",
     feeError: "金额格式无效",
+    catOfficial: "官方",
+    catRelay: "中转",
+    catCredit: "额度",
+    catOther: "其他",
+    categoryRequired: "请选择分类",
+    planRequired: "请填写套餐名称",
+    subDateInvalid: "订阅日期格式无效",
+    dueDateInvalid: "续费日期格式无效",
+    clipboardNoImage: "剪贴板无图片",
+    ocrNoText: "未识别到文字",
+    ocrFailed: (msg) => `图片识别失败：${msg}`,
+    noMatchedSub: "未匹配到已有订阅，请手动选择或新建",
+    filled: (n) => `已填充 ${n} 个字段`,
+    noFillable: "未识别到可填充的字段",
+    restoreFailed: "恢复订阅失败",
+    billAdded: (plan, amount) => `已为「${plan}」添加账单 ${amount} 元`,
+    confirmDelete: (plan) => `确定删除「${plan}」？`,
   },
   table: {
     category: "分类",
@@ -262,6 +306,17 @@ const zh: Dict = {
     catCredit: "额度",
     unrenewedPrompt: (plan) =>
       `${plan} 未续费：删除条目，还是改为未订阅？\n确定 = 删除，取消 = 改为未订阅`,
+  },
+  duePicker: {
+    title: "设置续费日",
+    label: "续费日",
+    cancel: "取消",
+    confirm: "确定",
+  },
+  calendar: {
+    placeholder: "选择日期",
+    prevMonth: "上个月",
+    nextMonth: "下个月",
   },
   stats: {
     byCategory: "按分类（本月支出）",
@@ -385,8 +440,24 @@ const en: Dict = {
     adding: "Adding…",
     saving: "Saving…",
     matched: (plan) => `Matched “${plan}” — submitting will add a bill to it`,
-    selectDate: "Pick a date",
     feeError: "Invalid amount",
+    catOfficial: "Official",
+    catRelay: "Relay",
+    catCredit: "Credits",
+    catOther: "Other",
+    categoryRequired: "Pick a category",
+    planRequired: "Enter a plan name",
+    subDateInvalid: "Invalid subscription date",
+    dueDateInvalid: "Invalid renewal date",
+    clipboardNoImage: "No image in the clipboard",
+    ocrNoText: "No text recognized",
+    ocrFailed: (msg) => `Image recognition failed: ${msg}`,
+    noMatchedSub: "No matching subscription — pick one or create a new entry",
+    filled: (n) => (n === 1 ? "Filled 1 field" : `Filled ${n} fields`),
+    noFillable: "Nothing recognized to fill in",
+    restoreFailed: "Could not restore the subscription",
+    billAdded: (plan, amount) => `Added a ¥${amount} bill for ${plan}`,
+    confirmDelete: (plan) => `Delete ${plan}?`,
   },
   table: {
     category: "Category",
@@ -413,6 +484,17 @@ const en: Dict = {
     catCredit: "Credits",
     unrenewedPrompt: (plan) =>
       `${plan} was not renewed. Delete the entry, or mark it unsubscribed?\nOK = delete, Cancel = mark unsubscribed`,
+  },
+  duePicker: {
+    title: "Set renewal date",
+    label: "Renewal date",
+    cancel: "Cancel",
+    confirm: "Confirm",
+  },
+  calendar: {
+    placeholder: "Pick a date",
+    prevMonth: "Previous month",
+    nextMonth: "Next month",
   },
   stats: {
     byCategory: "By category (this month)",

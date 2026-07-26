@@ -563,6 +563,7 @@ export default function App() {
           defaultValue={
             state.rows[duePickIndex]?.dueDate || new Date().toISOString().slice(0, 10)
           }
+          language={state.language}
           onCancel={() => setDuePickIndex(null)}
           onConfirm={confirmDueDate}
         />

@@ -38,6 +38,32 @@ export function formatDateCN(date: Date): string {
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
+const EN_MONTHS_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/** 按语言给出「已选日期」的展示文案。 */
+export function formatDateForLang(date: Date, lang: "zh-CN" | "en"): string {
+  if (lang === "en") {
+    return `${EN_MONTHS_SHORT[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+  }
+  return formatDateCN(date);
+}
+
+/** 按语言给出日历头部的「年月」。 */
+export function formatYearMonthForLang(year: number, month: number, lang: "zh-CN" | "en"): string {
+  if (lang === "en") return `${EN_MONTHS_SHORT[month]} ${year}`;
+  return formatYearMonth(year, month);
+}
+
+export const WEEKDAYS_EN = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+/** 按语言给出星期表头。 */
+export function weekdaysForLang(lang: "zh-CN" | "en"): string[] {
+  return lang === "en" ? WEEKDAYS_EN : WEEKDAYS_CN;
+}
+
 /**
  * Format year and month for calendar header
  * e.g., "2024年7月"

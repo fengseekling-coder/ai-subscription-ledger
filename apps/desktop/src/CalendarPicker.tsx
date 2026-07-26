@@ -7,10 +7,12 @@ import {
   prevMonth as getPrevMonth,
   nextMonth as getNextMonth,
   isSameDay,
-  formatDateCN,
-  formatYearMonth,
-  WEEKDAYS_CN,
+  formatDateForLang,
+  formatYearMonthForLang,
+  weekdaysForLang,
 } from "./utils/dateUtils";
+import { resolveLang, tFor } from "./i18n";
+import type { AppState } from "@ai-sub/core";
 
 interface Props {
   value: string; // ISO date string YYYY-MM-DD
@@ -22,10 +24,20 @@ interface Props {
   /** Called when the user closes the picker (controlled mode) */
   onClose?: () => void;
   className?: string;
-  placeholder?: string;
+  language?: AppState["language"];
 }
 
-export function CalendarPicker({ value, onChange, isOpen: controlledOpen, onOpen, onClose, className }: Props) {
+export function CalendarPicker({
+  value,
+  onChange,
+  isOpen: controlledOpen,
+  onOpen,
+  onClose,
+  className,
+  language,
+}: Props) {
+  const lang = resolveLang(language);
+  const t = tFor(lang).calendar;
   const today = new Date();
   const selected = value ? isoToDate(value) : today;
   const [viewYear, setViewYear] = useState(selected.getFullYear());
@@ -90,7 +102,7 @@ export function CalendarPicker({ value, onChange, isOpen: controlledOpen, onOpen
     setViewMonth(m);
   }
 
-  const displayLabel = value ? formatDateCN(selected) : "选择日期";
+  const displayLabel = value ? formatDateForLang(selected, lang) : t.placeholder;
 
   return (
     <div ref={wrapperRef} className={`cal-picker${open ? " cal-picker--open" : ""}${className ? " " + className : ""}`}>
@@ -108,15 +120,15 @@ export function CalendarPicker({ value, onChange, isOpen: controlledOpen, onOpen
       {open && (
         <div className="cal-picker__dropdown">
           <div className="cal-picker__nav">
-            <button type="button" className="cal-picker__arrow" onClick={handlePrevMonth} aria-label="上个月"><Icon name="chevronLeft" size={14} /></button>
+            <button type="button" className="cal-picker__arrow" onClick={handlePrevMonth} aria-label={t.prevMonth}><Icon name="chevronLeft" size={14} /></button>
             <span className="cal-picker__ym">
-              {formatYearMonth(viewYear, viewMonth)}
+              {formatYearMonthForLang(viewYear, viewMonth, lang)}
             </span>
-            <button type="button" className="cal-picker__arrow" onClick={handleNextMonth} aria-label="下个月"><Icon name="chevronRight" size={14} /></button>
+            <button type="button" className="cal-picker__arrow" onClick={handleNextMonth} aria-label={t.nextMonth}><Icon name="chevronRight" size={14} /></button>
           </div>
 
           <div className="cal-picker__grid">
-            {WEEKDAYS_CN.map(d => (
+            {weekdaysForLang(lang).map(d => (
               <span key={d} className="cal-picker__dow">{d}</span>
             ))}
             {buildCalendarDays(viewYear, viewMonth).map((date, i) =>
