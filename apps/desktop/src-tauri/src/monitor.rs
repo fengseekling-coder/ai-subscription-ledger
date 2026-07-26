@@ -79,7 +79,9 @@ async fn check_openai(client: &Client, api_key: &str) -> Result<MonitorCheckResu
 
     // fallback: 尝试获取账单信息
     let now = Utc::now();
-    let start_date = (now - chrono::Duration::days(180)).format("%Y-%m-%d").to_string();
+    let start_date = (now - chrono::Duration::days(180))
+        .format("%Y-%m-%d")
+        .to_string();
     let end_date = now.format("%Y-%m-%d").to_string();
     let billing_url = format!(
         "https://api.openai.com/v1/dashboard/billing/usage?start_date={}&end_date={}",
@@ -139,22 +141,20 @@ async fn check_openai(client: &Client, api_key: &str) -> Result<MonitorCheckResu
         .await;
 
     match models_resp {
-        Ok(resp) if resp.status().is_success() => {
-            return Ok(MonitorCheckResult {
-                monitor_id: String::new(),
-                status: "active".to_string(),
-                status_detail: "API Key 有效".to_string(),
-                remote_plan: "Unknown".to_string(),
-                remote_amount: 0.0,
-                remote_renewal_date: String::new(),
-                error_message: String::new(),
-            });
-        }
+        Ok(resp) if resp.status().is_success() => Ok(MonitorCheckResult {
+            monitor_id: String::new(),
+            status: "active".to_string(),
+            status_detail: "API Key 有效".to_string(),
+            remote_plan: "Unknown".to_string(),
+            remote_amount: 0.0,
+            remote_renewal_date: String::new(),
+            error_message: String::new(),
+        }),
         Ok(resp) => {
             let status = resp.status();
-            return Err(format!("OpenAI API 验证失败 (HTTP {})", status));
+            Err(format!("OpenAI API 验证失败 (HTTP {})", status))
         }
-        Err(e) => return Err(format!("OpenAI API 请求失败: {}", e)),
+        Err(e) => Err(format!("OpenAI API 请求失败: {}", e)),
     }
 }
 
@@ -171,17 +171,15 @@ async fn check_anthropic(client: &Client, api_key: &str) -> Result<MonitorCheckR
         .await;
 
     match resp {
-        Ok(resp) if resp.status().is_success() => {
-            return Ok(MonitorCheckResult {
-                monitor_id: String::new(),
-                status: "active".to_string(),
-                status_detail: "API Key 有效".to_string(),
-                remote_plan: "Claude API".to_string(),
-                remote_amount: 0.0,
-                remote_renewal_date: String::new(),
-                error_message: String::new(),
-            });
-        }
+        Ok(resp) if resp.status().is_success() => Ok(MonitorCheckResult {
+            monitor_id: String::new(),
+            status: "active".to_string(),
+            status_detail: "API Key 有效".to_string(),
+            remote_plan: "Claude API".to_string(),
+            remote_amount: 0.0,
+            remote_renewal_date: String::new(),
+            error_message: String::new(),
+        }),
         Ok(resp) => {
             let status = resp.status();
             if status.as_u16() == 401 {
@@ -195,9 +193,9 @@ async fn check_anthropic(client: &Client, api_key: &str) -> Result<MonitorCheckR
                     error_message: "API Key 无效或已过期".to_string(),
                 });
             }
-            return Err(format!("Anthropic API 验证失败 (HTTP {})", status));
+            Err(format!("Anthropic API 验证失败 (HTTP {})", status))
         }
-        Err(e) => return Err(format!("Anthropic API 请求失败: {}", e)),
+        Err(e) => Err(format!("Anthropic API 请求失败: {}", e)),
     }
 }
 
@@ -220,7 +218,10 @@ async fn check_cursor(client: &Client, api_key: &str) -> Result<MonitorCheckResu
         Ok(resp) if resp.status().is_success() => {
             let text = resp.text().await.unwrap_or_default();
             // Cursor 的响应格式可能变化，做基本解析
-            if text.contains("Subscription") || text.contains("subscription") || text.contains("pro") {
+            if text.contains("Subscription")
+                || text.contains("subscription")
+                || text.contains("pro")
+            {
                 return Ok(MonitorCheckResult {
                     monitor_id: String::new(),
                     status: "active".to_string(),
@@ -231,7 +232,7 @@ async fn check_cursor(client: &Client, api_key: &str) -> Result<MonitorCheckResu
                     error_message: String::new(),
                 });
             }
-            return Ok(MonitorCheckResult {
+            Ok(MonitorCheckResult {
                 monitor_id: String::new(),
                 status: "active".to_string(),
                 status_detail: "API Key 有效".to_string(),
@@ -239,13 +240,13 @@ async fn check_cursor(client: &Client, api_key: &str) -> Result<MonitorCheckResu
                 remote_amount: 0.0,
                 remote_renewal_date: String::new(),
                 error_message: String::new(),
-            });
+            })
         }
         Ok(resp) => {
             let status = resp.status();
-            return Err(format!("Cursor API 验证失败 (HTTP {})", status));
+            Err(format!("Cursor API 验证失败 (HTTP {})", status))
         }
-        Err(e) => return Err(format!("Cursor API 请求失败: {}", e)),
+        Err(e) => Err(format!("Cursor API 请求失败: {}", e)),
     }
 }
 

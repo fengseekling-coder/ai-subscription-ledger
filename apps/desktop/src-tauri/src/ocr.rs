@@ -2,8 +2,8 @@
 pub fn ocr_image_rgba(rgba: &[u8], width: usize, height: usize) -> Result<String, String> {
     use objc2::AnyThread;
     use objc2_core_graphics::{
-        CGColorRenderingIntent, CGColorSpace, CGDataProvider, CGImage, CGImageAlphaInfo,
-        CGImageByteOrderInfo, CGBitmapInfo,
+        CGBitmapInfo, CGColorRenderingIntent, CGColorSpace, CGDataProvider, CGImage,
+        CGImageAlphaInfo, CGImageByteOrderInfo,
     };
     use objc2_foundation::{NSArray, NSDictionary, NSString};
     use objc2_vision::{
@@ -29,10 +29,11 @@ pub fn ocr_image_rgba(rgba: &[u8], width: usize, height: usize) -> Result<String
             return;
         }
         let ptr = data.as_ptr() as *mut u8;
-        let _ = Box::from_raw(std::slice::from_raw_parts_mut(ptr, size));
+        let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, size));
     }
 
-    let color_space = CGColorSpace::new_device_rgb().ok_or_else(|| "无法创建颜色空间".to_string())?;
+    let color_space =
+        CGColorSpace::new_device_rgb().ok_or_else(|| "无法创建颜色空间".to_string())?;
 
     let provider = unsafe {
         CGDataProvider::with_data(
@@ -86,19 +87,15 @@ pub fn ocr_image_rgba(rgba: &[u8], width: usize, height: usize) -> Result<String
 
     let vn_request: &VNRequest = &request;
     let requests = NSArray::from_slice(&[vn_request]);
-    handler
-        .performRequests_error(&requests)
-        .map_err(|e| {
-            let code = e.code();
-            let domain = e.domain();
-            let localized = e.localizedDescription();
-            // 不臆测 VNError 码含义，保留系统文案 + 域/码便于排查
-            format!("Vision OCR 失败 [{}:{}]: {}", domain, code, localized)
-        })?;
+    handler.performRequests_error(&requests).map_err(|e| {
+        let code = e.code();
+        let domain = e.domain();
+        let localized = e.localizedDescription();
+        // 不臆测 VNError 码含义，保留系统文案 + 域/码便于排查
+        format!("Vision OCR 失败 [{}:{}]: {}", domain, code, localized)
+    })?;
 
-    let results = request
-        .results()
-        .ok_or_else(|| "OCR 无结果".to_string())?;
+    let results = request.results().ok_or_else(|| "OCR 无结果".to_string())?;
 
     let mut lines = Vec::new();
     for obs in results.iter() {
