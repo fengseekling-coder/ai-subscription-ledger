@@ -1,4 +1,4 @@
-import { nextMonthlyDueDate, normalizeDateInput, todayLocalISO } from "./dates.js";
+import { formatDate, nextMonthlyDueDate, normalizeDateInput } from "./dates.js";
 import { moneyValue, looksLikeUsdFee, USD_CNY_RATE } from "./money.js";
 import { normalizeBill, normalizeRow } from "./normalize.js";
 import { isActiveSubscription, needsDueDate } from "./rules.js";
@@ -42,7 +42,8 @@ export function addRowWithDetails(
   patch: Pick<SubscriptionRow, "category" | "plan" | "fee" | "usage" | "dueDate" | "subscribedAt"> & {
     subscribed: boolean;
     expired: boolean;
-  }
+  },
+  ref = new Date()
 ): AppState | { error: string } {
   const plan = patch.plan.trim();
   if (!plan) return { error: "请填写套餐名称" };
@@ -57,7 +58,7 @@ export function addRowWithDetails(
     expired: patch.expired,
   });
   if (row.subscribed && !row.subscribedAt) {
-    row = { ...row, subscribedAt: todayLocalISO() };
+    row = { ...row, subscribedAt: formatDate(ref) };
   }
   return { ...state, rows: [...state.rows, row] };
 }
@@ -100,7 +101,6 @@ export function toggleSubscribe(state: AppState, index: number, ref = new Date()
   if (index < 0 || index >= state.rows.length) {
     return { error: "索引超出范围" };
   }
-  void ref;
   const rows = state.rows.slice();
   const row = { ...rows[index] };
   row.subscribed = !row.subscribed;
@@ -108,7 +108,7 @@ export function toggleSubscribe(state: AppState, index: number, ref = new Date()
     row.dueDate = "";
     row.subscribedAt = "";
   } else if (!row.subscribedAt) {
-    row.subscribedAt = todayLocalISO();
+    row.subscribedAt = formatDate(ref);
   }
   rows[index] = normalizeRow(row);
   return { ...state, rows };
@@ -118,8 +118,7 @@ export function toggleSubscribe(state: AppState, index: number, ref = new Date()
 export function subscribeNoticeAfterToggle(state: AppState, index: number, ref = new Date()): string | null {
   const row = state.rows[index];
   if (!row?.subscribed) return null;
-  void ref;
-  if (needsDueDate(row) && !row.dueDate) {
+  if (needsDueDate(row, ref) && !row.dueDate) {
     return `已订阅「${row.plan}」。建议设置续费日，便于预算与提醒。`;
   }
   return null;
@@ -134,9 +133,8 @@ export function pickDueDate(
   if (index < 0 || index >= state.rows.length) {
     return { error: "索引超出范围" };
   }
-  void ref;
   if (rawInput === null) return { state };
-  const iso = normalizeDateInput(rawInput);
+  const iso = normalizeDateInput(rawInput, ref);
   if (iso === null) return { error: "日期格式请使用 YYYY-MM-DD" };
   const result = updateRowField(state, index, "dueDate", iso);
   if ("error" in result) return result;
@@ -194,7 +192,9 @@ export function renewRow(state: AppState, index: number, ref = new Date()): AppS
   const bills = [...state.bills];
   const amt = feeToCnyAmount(rows[index].fee);
   if (amt > 0) {
-    const monthKey = todayLocalISO().slice(0, 7);
+    // 去重键与 paidAt 都必须来自同一个 ref。之前 dueDate 用 ref、这里用真实时钟，
+    // 传入 ref 时「每月只记一笔续费」会对着错误的月份判重。
+    const monthKey = formatDate(ref).slice(0, 7);
     const dup = bills.some(
       (b) =>
         b.subscriptionId === rows[index].id &&
@@ -206,7 +206,7 @@ export function renewRow(state: AppState, index: number, ref = new Date()): AppS
         normalizeBill({
           subscriptionId: rows[index].id,
           amount: amt,
-          paidAt: todayLocalISO(),
+          paidAt: formatDate(ref),
           orderId: "",
           note: prevDue ? `续费（原到期 ${prevDue}）· 预付下期` : "续费",
           kind: "renewal",
@@ -226,7 +226,7 @@ export function addBill(state: AppState, ref = new Date()): AppState | { error: 
     normalizeBill({
       subscriptionId: pick.id,
       amount: feeToCnyAmount(pick.fee),
-      paidAt: todayLocalISO(),
+      paidAt: formatDate(ref),
       orderId: "",
       note: "",
     }),

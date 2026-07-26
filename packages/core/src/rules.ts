@@ -18,8 +18,8 @@ export function isRecurringFee(row: SubscriptionRow): boolean {
   return moneyValue(row.fee) > 0 || /^\s*0\s*$/.test(String(row.fee || ""));
 }
 
-export function needsDueDate(row: SubscriptionRow): boolean {
-  return isActiveSubscription(row) && isRecurringFee(row) && !isCreditLike(row);
+export function needsDueDate(row: SubscriptionRow, ref = new Date()): boolean {
+  return isActiveSubscription(row, ref) && isRecurringFee(row) && !isCreditLike(row);
 }
 
 export function isRowExpired(row: SubscriptionRow, ref = new Date()): boolean {
