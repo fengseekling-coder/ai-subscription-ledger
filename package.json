@@ -14,7 +14,7 @@
     "parity": "npm run build -w @ai-sub/core && node scripts/parity-html-core.mjs",
     "check": "npm run test && npm run parity && npm run build",
     "lint": "eslint packages/core/src apps/desktop/src --max-warnings 0",
-    "test:desktop": "npm run test -w @ai-sub/desktop",
+    "test:desktop": "npm run build -w @ai-sub/core && npm run test -w @ai-sub/desktop",
     "test": "npm run test:core && npm run test:desktop"
   },
   "engines": {
