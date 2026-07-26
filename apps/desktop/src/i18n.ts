@@ -10,7 +10,7 @@ export const LANGS: { value: LangPref; label: Record<Lang, string> }[] = [
 export type Dict = {
   brand: string;
   nav: { subs: string; stats: string; expired: string; bills: string; pending: string };
-  toolbar: { add: string; addBill: string; catalog: string; search: string; theme: string; settings: string };
+  toolbar: { add: string; addBill: string; catalog: string; theme: string; settings: string };
   dashboard: {
     monthSpend: string;
     budgetLeft: string;
@@ -160,7 +160,7 @@ export type Dict = {
 const zh: Dict = {
   brand: "订阅账本",
   nav: { subs: "概览", stats: "统计", expired: "已过期", bills: "账单", pending: "待续费" },
-  toolbar: { add: "新增订阅", addBill: "记一笔", catalog: "服务库", search: "搜索", theme: "深色", settings: "设置" },
+  toolbar: { add: "新增订阅", addBill: "记一笔", catalog: "服务库", theme: "深色", settings: "设置" },
   dashboard: {
     monthSpend: "本月支出",
     budgetLeft: "预算剩余",
@@ -311,7 +311,7 @@ const zh: Dict = {
 const en: Dict = {
   brand: "Subscription Ledger",
   nav: { subs: "Overview", stats: "Stats", expired: "Expired", bills: "Bills", pending: "Renewals" },
-  toolbar: { add: "Add", addBill: "Add bill", catalog: "Catalog", search: "Search", theme: "Theme", settings: "Settings" },
+  toolbar: { add: "Add", addBill: "Add bill", catalog: "Catalog", theme: "Theme", settings: "Settings" },
   dashboard: {
     monthSpend: "This month",
     budgetLeft: "Budget left",

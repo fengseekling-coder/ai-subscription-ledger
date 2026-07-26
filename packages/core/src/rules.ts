@@ -59,7 +59,9 @@ export function rowSortKey(row: SubscriptionRow, ref = new Date()) {
 }
 
 export function sortRowEntries<T extends { row: SubscriptionRow }>(entries: T[], ref = new Date()): T[] {
-  return entries.sort((a, b) => {
+  // slice() 后再排：Array.sort 原地改数组，直接排会把调用方传进来的数组一起改掉
+  // （sortedBills 一直是这么做的，这里之前漏了）。
+  return entries.slice().sort((a, b) => {
     const ka = rowSortKey(a.row, ref);
     const kb = rowSortKey(b.row, ref);
     if (ka.tier !== kb.tier) return ka.tier - kb.tier;
