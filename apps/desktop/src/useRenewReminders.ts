@@ -1,21 +1,18 @@
 import { pendingRenewItems, type AppState } from "@ai-sub/core";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect } from "react";
 
 export function useRenewReminders(
   state: AppState | null,
   notifyOn: boolean,
   showNotice: (text: string, danger?: boolean) => void
 ) {
-  const stateRef = useRef(state);
-  // Keep stateRef in sync to avoid stale closure in checkReminders
-  stateRef.current = state;
-
+  // 这里不需要 ref 兜「闭包过期」：下面的 interval effect 本来就把 state 列进了
+  // 依赖，state 一变 checkReminders 与 effect 一起重建，直接闭包 state 即可。
   const checkReminders = useCallback(
     async (force: boolean) => {
-      const currentState = stateRef.current;
-      if (!currentState) return;
-      const items = pendingRenewItems(currentState.rows);
+      if (!state) return;
+      const items = pendingRenewItems(state.rows);
       if (!items.length) {
         if (force) showNotice("当前没有 3 天内需要续费的已订阅套餐。");
         return;
@@ -30,7 +27,7 @@ export function useRenewReminders(
         }
       }
     },
-    [notifyOn, showNotice]
+    [state, notifyOn, showNotice]
   );
 
   useEffect(() => {

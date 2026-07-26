@@ -36,13 +36,17 @@ export function CalendarPicker({ value, onChange, isOpen: controlledOpen, onOpen
 
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
 
-  // Sync view when external value changes while closed
+  // Sync view when external value changes while closed.
+  // 从 value 现算而不是读渲染期派生的 selected —— selected 每次渲染都是新对象，
+  // 列进依赖会让这个 effect 每帧都跑。
+  /* eslint-disable react-hooks/set-state-in-effect -- 外部 value 变化时同步内部视图；改用父级传 key 重挂需要改所有调用方，另行处理 */
   useEffect(() => {
-    if (!open) {
-      setViewYear(selected.getFullYear());
-      setViewMonth(selected.getMonth());
-    }
+    if (open) return;
+    const d = value ? isoToDate(value) : new Date();
+    setViewYear(d.getFullYear());
+    setViewMonth(d.getMonth());
   }, [value, open]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Close on outside click
   useEffect(() => {

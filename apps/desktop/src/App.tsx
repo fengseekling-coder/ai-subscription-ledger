@@ -48,14 +48,51 @@ const NEW_SUBSCRIPTION_DRAFT: SubscriptionFormDraft = {
 function useDebouncedPersistence(state: AppState | null) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef<AppState | null>(null);
-  stateRef.current = state;
+  // 是否有尚未落盘的改动。落盘只发生在真正有改动时——所有 flush 路径都查它，
+  // 这样「刚从磁盘读出来的状态」不会被原样写回去。
+  const dirty = useRef(false);
+  // 首个非空 state 来自 loadAppState()，不是用户改动。若把它也写回磁盘，
+  // 一旦读取降级成了空账本（例如数据文件损坏后被归档），这次写回就会把空状态
+  // 落盘，让降级变成不可逆。
+  const seenInitialState = useRef(false);
+
+  // 在 effect 里同步而非渲染期赋值：渲染期写 ref 是 React 明确不建议的。
+  // flushIfDirty 只在事件回调/effect 清理里读它，那时本 effect 早已跑过。
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  const flushIfDirty = useCallback(async () => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    if (!dirty.current) return;
+    const current = stateRef.current;
+    if (!current) return;
+    dirty.current = false;
+    try {
+      await persistAppState(current);
+    } catch {
+      dirty.current = true;
+    }
+  }, []);
 
   useEffect(() => {
     if (!state) return;
-    
+    if (!seenInitialState.current) {
+      seenInitialState.current = true;
+      return;
+    }
+
+    dirty.current = true;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      persistAppState(state).catch(() => {});
+      saveTimer.current = null;
+      dirty.current = false;
+      persistAppState(state).catch(() => {
+        dirty.current = true;
+      });
     }, 200);
 
     return () => {
@@ -69,38 +106,28 @@ function useDebouncedPersistence(state: AppState | null) {
   // page is about to unload. Without this, force-kill / OS sleep / immediate
   // window close within the 200 ms debounce window loses the latest edit.
   useEffect(() => {
-    const flush = () => {
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current);
-        saveTimer.current = null;
-      }
-      const current = stateRef.current;
-      if (current) {
-        void persistAppState(current);
-      }
+    const onFlush = () => {
+      void flushIfDirty();
     };
     const onVisibility = () => {
-      if (document.visibilityState === "hidden") flush();
+      if (document.visibilityState === "hidden") onFlush();
     };
-    window.addEventListener("beforeunload", flush);
+    window.addEventListener("beforeunload", onFlush);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      window.removeEventListener("beforeunload", flush);
+      window.removeEventListener("beforeunload", onFlush);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, []);
+  }, [flushIfDirty]);
 
   // Flush on unmount
   useEffect(() => {
     return () => {
-      if (saveTimer.current && stateRef.current) {
-        clearTimeout(saveTimer.current);
-        void persistAppState(stateRef.current);
-      }
+      void flushIfDirty();
     };
-  }, []);
+  }, [flushIfDirty]);
 
-  return stateRef;
+  return { stateRef, flushIfDirty };
 }
 
 // Custom hook for tray menu updates
@@ -133,23 +160,21 @@ function useTrayMenu(state: AppState | null, summary: ReturnType<typeof computeS
 }
 
 // Custom hook for window close handling
-function useWindowCloseHandler(stateRef: React.MutableRefObject<AppState | null>) {
+function useWindowCloseHandler(flushIfDirty: () => Promise<void>) {
   useEffect(() => {
     // 纯浏览器环境（vite dev 预览）没有 Tauri 窗口
     if (!("__TAURI_INTERNALS__" in window)) return;
     const w = getCurrentWindow();
     const unlisten = w.onCloseRequested(async (e) => {
-      const current = stateRef.current;
-      if (current) {
-        e.preventDefault();
-        await persistAppState(current);
-        await w.destroy();
-      }
+      e.preventDefault();
+      // 走同一个 flush：有改动才落盘，没改动就直接关，不把读出来的状态写回去。
+      await flushIfDirty();
+      await w.destroy();
     });
     return () => {
       void unlisten.then((fn) => fn());
     };
-  }, [stateRef]);
+  }, [flushIfDirty]);
 }
 
 // Navigation handler hook
@@ -208,8 +233,8 @@ export default function App() {
   
   // Hooks
   const { notice, showNotice } = useNotice();
-  const stateRef = useDebouncedPersistence(state);
-  useWindowCloseHandler(stateRef);
+  const { flushIfDirty } = useDebouncedPersistence(state);
+  useWindowCloseHandler(flushIfDirty);
 
   // Derived state - memoized
   const lang = resolveLang(state?.language);
@@ -233,10 +258,10 @@ export default function App() {
     [state]
   );
 
-  // Load data
+  // Load data。isLoading 的初值已经是 true，且 showNotice 是稳定引用（useCallback([])），
+  // 本 effect 只在挂载时跑一次，所以不需要再 setIsLoading(true)。
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
     loadAppState()
       .then((s) => {
         if (!cancelled) setState(s);
@@ -272,10 +297,14 @@ export default function App() {
     };
   }, []);
 
-  // Auto-switch from pending if empty
+  // Auto-switch from pending if empty.
+  // 这里刻意保留 effect + setState：改成渲染期派生（mode 为 pending 且列表空时显示 subs）
+  // 会让待续费重新出现时视图自己跳回 pending，而现在是留在 subs 不动。行为不同，不顺手改。
+  /* eslint-disable react-hooks/set-state-in-effect -- 见上：派生写法会改变可见行为 */
   useEffect(() => {
     if (mode === "pending" && pending.length === 0) setMode("subs");
   }, [mode, pending.length]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Handlers
   const commit = useCallback((next: AppState) => {

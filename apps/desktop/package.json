@@ -20,8 +20,7 @@
     "@tauri-apps/plugin-fs": "^2.2.0",
     "@tauri-apps/plugin-notification": "^2.2.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "zustand": "^5.0.14"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.2.0",

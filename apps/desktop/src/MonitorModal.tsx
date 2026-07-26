@@ -1,6 +1,6 @@
 import type { AppState, Monitor } from "@ai-sub/core";
 import { newId } from "@ai-sub/core";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ModalCloseButton } from "./ui/Icon";
 
@@ -61,7 +61,8 @@ interface Props {
 }
 
 export function MonitorModal({ state, onClose, onCommit }: Props) {
-  const monitors = state.monitors ?? [];
+  // useMemo：`?? []` 每次渲染都会新建数组，会让所有依赖 monitors 的 useCallback 失效。
+  const monitors = useMemo(() => state.monitors ?? [], [state.monitors]);
   const [services, setServices] = useState<SupportedService[]>([]);
   const [adding, setAdding] = useState(false);
   const [selectedService, setSelectedService] = useState("");
@@ -71,15 +72,15 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
   const [checkingId, setCheckingId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // 服务列表到手时顺带选中第一项，不再用第二个 effect 追着 services 改 state。
   useEffect(() => {
-    invoke<SupportedService[]>("get_supported_services").then(setServices).catch(() => {});
+    invoke<SupportedService[]>("get_supported_services")
+      .then((list) => {
+        setServices(list);
+        setSelectedService((prev) => prev || list[0]?.id || "");
+      })
+      .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (services.length > 0 && !selectedService) {
-      setSelectedService(services[0].id);
-    }
-  }, [services, selectedService]);
 
   useEffect(() => {
     if (adding) setTimeout(() => inputRef.current?.focus(), 100);

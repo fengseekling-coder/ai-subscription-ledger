@@ -228,6 +228,9 @@ export function SubscriptionFormModal({
   const [subscribedChecked, setSubscribedChecked] = useState(draft.subscribed);
   const [category, setCategory] = useState(draft.category || "官方");
 
+  // 切换新增/编辑目标时重置整个表单。React 推荐的写法是让父组件传 key 强制重挂，
+  // 那要改 App.tsx 的调用点并核对全部 8 处表单状态的初值，单独做更稳妥。
+  /* eslint-disable react-hooks/set-state-in-effect -- 表单重置，应改为父级传 key 重挂 */
   useEffect(() => {
     setMatchedSub(null);
     setSubscribedChecked(draft.subscribed);
@@ -237,6 +240,7 @@ export function SubscriptionFormModal({
     setFeeError(null);
     setDateErrors({});
   }, [mode, editIndex, draft]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handlePasteImage = async () => {
     try {
