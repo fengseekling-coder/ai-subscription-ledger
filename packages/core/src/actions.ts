@@ -217,30 +217,95 @@ export function renewRow(state: AppState, index: number, ref = new Date()): AppS
   return { ...state, rows, bills };
 }
 
-export function addBill(state: AppState, ref = new Date()): AppState | { error: string } {
+/** 账单表单的字段。amount 保持字符串，由 moneyValue 解析用户输入。 */
+export interface BillDraft {
+  subscriptionId: string;
+  amount: string;
+  paidAt: string;
+  orderId: string;
+  note: string;
+}
+
+/**
+ * 「记账单」的预填：默认选中第一个在用订阅，金额按其月费折算为 ¥。
+ * 只负责给出草稿，实际入账由 addBillWithDetails 完成——用户可以先改再存。
+ */
+export function billDraftFor(state: AppState, ref = new Date()): BillDraft | { error: string } {
   const active = state.rows.filter((r) => isActiveSubscription(r, ref));
   const pick = active[0] || state.rows[0];
   if (!pick) return { error: "请先添加订阅，再记账单。" };
-  const bills = [
-    ...state.bills,
-    normalizeBill({
-      subscriptionId: pick.id,
-      amount: feeToCnyAmount(pick.fee),
-      paidAt: formatDate(ref),
-      orderId: "",
-      note: "",
-    }),
-  ];
+  const amount = feeToCnyAmount(pick.fee);
+  return {
+    subscriptionId: pick.id,
+    amount: amount > 0 ? String(amount) : "",
+    paidAt: formatDate(ref),
+    orderId: "",
+    note: "",
+  };
+}
+
+/** 草稿 → 合法字段，供新增与编辑共用。 */
+function validateBillDraft(
+  state: AppState,
+  draft: BillDraft,
+  ref: Date
+): { subscriptionId: string; amount: number; paidAt: string; orderId: string; note: string } | { error: string } {
+  const subscriptionId = draft.subscriptionId.trim();
+  if (!subscriptionId || !subById(state, subscriptionId)) {
+    return { error: "请选择关联订阅" };
+  }
+  const amount = moneyValue(draft.amount);
+  if (!(amount > 0)) return { error: "请填写有效金额" };
+  const paidAt = normalizeDateInput(draft.paidAt, ref);
+  if (paidAt === null) return { error: "日期格式请使用 YYYY-MM-DD" };
+  return {
+    subscriptionId,
+    amount,
+    paidAt: paidAt || formatDate(ref),
+    orderId: draft.orderId,
+    note: draft.note,
+  };
+}
+
+export function addBillWithDetails(
+  state: AppState,
+  draft: BillDraft,
+  ref = new Date()
+): AppState | { error: string } {
+  const fields = validateBillDraft(state, draft, ref);
+  if ("error" in fields) return fields;
+  return {
+    ...state,
+    bills: [...state.bills, normalizeBill({ ...fields, kind: "payment" })],
+  };
+}
+
+/** 整表单更新一笔账单。kind 不由表单改动，沿用原值。 */
+export function updateBillDetails(
+  state: AppState,
+  billId: string,
+  draft: BillDraft,
+  ref = new Date()
+): AppState | { error: string } {
+  const existing = state.bills.find((b) => b.id === billId);
+  if (!existing) return { error: "未找到该账单" };
+  const fields = validateBillDraft(state, draft, ref);
+  if ("error" in fields) return fields;
+  const bills = state.bills.map((b) =>
+    b.id === billId ? normalizeBill({ ...fields, id: b.id, kind: b.kind }) : b
+  );
   return { ...state, bills };
 }
 
-export function updateBill(state: AppState, billId: string, key: keyof Bill, value: string | number): AppState {
-  const bills = state.bills.map((b) => {
-    if (b.id !== billId) return b;
-    if (key === "amount") return { ...b, amount: moneyValue(value) };
-    return { ...b, [key]: String(value).trim() };
-  });
-  return { ...state, bills };
+/** 已有账单 → 表单草稿 */
+export function billToDraft(bill: Bill): BillDraft {
+  return {
+    subscriptionId: bill.subscriptionId,
+    amount: String(bill.amount),
+    paidAt: bill.paidAt,
+    orderId: bill.orderId,
+    note: bill.note,
+  };
 }
 
 export function deleteBill(state: AppState, billId: string): AppState {

@@ -1,5 +1,6 @@
 import {
-  addBill,
+  billDraftFor,
+  billToDraft,
   billsForCalendarMonth,
   computeSummary,
   expiredRowEntries,
@@ -9,8 +10,10 @@ import {
   sortedBills,
   visibleRowEntries,
   type AppState,
+  type BillDraft,
 } from "@ai-sub/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BillFormModal } from "./BillFormModal";
 import { BillsView } from "./BillsView";
 import { CatalogModal } from "./CatalogModal";
 import { Dashboard } from "./Dashboard";
@@ -230,6 +233,8 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showMonitor, setShowMonitor] = useState(false);
   const [notifyOn, setNotifyOn] = useState(localStorage.getItem("ai-sub-notify") === "on");
+  // 账单表单：新增时 billId 为 null，编辑时带上要改的账单 id
+  const [billForm, setBillForm] = useState<{ billId: string | null; draft: BillDraft } | null>(null);
   
   // Hooks
   const { notice, showNotice } = useNotice();
@@ -369,20 +374,32 @@ export default function App() {
     commit(r.state);
   }, [state, duePickIndex, commit, showNotice]);
 
+  const openAddBill = useCallback(() => {
+    if (!state) return;
+    // 预填第一个在用订阅与其折算金额，但一切都可在弹窗里改再存。
+    const draft = billDraftFor(state);
+    if ("error" in draft) {
+      showNotice(draft.error, true);
+      return;
+    }
+    setBillForm({ billId: null, draft });
+  }, [state, showNotice]);
+
+  const openEditBill = useCallback((billId: string) => {
+    if (!state) return;
+    const bill = state.bills.find((b) => b.id === billId);
+    if (!bill) return;
+    setBillForm({ billId, draft: billToDraft(bill) });
+  }, [state]);
+
   const handlePrimary = useCallback(() => {
     if (!state) return;
     if (mode === "bills") {
-      const r = addBill(state);
-      if ("error" in r) {
-        showNotice(r.error, true);
-        return;
-      }
-      commit(r);
-      showNotice("已添加账单");
+      openAddBill();
       return;
     }
     openAddSubscription();
-  }, [state, mode, commit, showNotice, openAddSubscription]);
+  }, [state, mode, openAddBill, openAddSubscription]);
 
   // Modal data
   const editRow = editIndex !== null && state ? state.rows[editIndex] : null;
@@ -577,7 +594,13 @@ export default function App() {
         )}
 
         {mode === "bills" && (
-          <BillsView state={state} bills={bills} onCommit={commit} onNotice={showNotice} />
+          <BillsView
+            state={state}
+            bills={bills}
+            onCommit={commit}
+            onNotice={showNotice}
+            onEdit={openEditBill}
+          />
         )}
 
         {mode === "pending" && (
@@ -599,6 +622,18 @@ export default function App() {
           editRow={editRow}
           language={state.language}
           onClose={closeSubModal}
+          onCommit={commit}
+          onNotice={showNotice}
+        />
+      )}
+
+      {billForm && state && (
+        <BillFormModal
+          mode={billForm.billId ? "edit" : "add"}
+          billId={billForm.billId ?? undefined}
+          draft={billForm.draft}
+          state={state}
+          onClose={() => setBillForm(null)}
           onCommit={commit}
           onNotice={showNotice}
         />

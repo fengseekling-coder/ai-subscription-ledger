@@ -5,9 +5,10 @@ type Props = {
   bills: Bill[];
   onCommit: (next: AppState) => void;
   onNotice: (text: string, danger?: boolean) => void;
+  onEdit: (billId: string) => void;
 };
 
-export function BillsView({ state, bills, onCommit, onNotice }: Props) {
+export function BillsView({ state, bills, onCommit, onNotice, onEdit }: Props) {
   return (
     <section className="section">
       <div className="table-card">
@@ -45,6 +46,13 @@ export function BillsView({ state, bills, onCommit, onNotice }: Props) {
                   </td>
                   <td>
                     <div className="actions">
+                      <button
+                        type="button"
+                        onClick={() => onEdit(bill.id)}
+                        title={`编辑「${sub?.plan ?? "账单"}」这笔账单`}
+                      >
+                        改
+                      </button>
                       <button
                         type="button"
                         onClick={() => {

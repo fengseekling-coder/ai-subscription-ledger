@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  addBill,
+  addBillWithDetails,
   addRowWithDetails,
+  billDraftFor,
+  billToDraft,
   deleteBill,
   deleteRow,
   markExpired,
@@ -12,9 +14,10 @@ import {
   setBudget,
   subscribeNoticeAfterToggle,
   toggleSubscribe,
-  updateBill,
+  updateBillDetails,
   updateRow,
   updateRowField,
+  type BillDraft,
 } from "./actions.js";
 import { USD_CNY_RATE } from "./money.js";
 import { loadFromJson } from "./load.js";
@@ -49,46 +52,174 @@ function unwrap<T>(r: T | { error: string }): T {
   return r as T;
 }
 
-describe("addBill", () => {
+describe("billDraftFor", () => {
   it("errors when there is no subscription at all", () => {
-    const r = addBill(stateWith([]), REF);
-    expect(r).toEqual({ error: "请先添加订阅，再记账单。" });
+    expect(billDraftFor(stateWith([]), REF)).toEqual({ error: "请先添加订阅，再记账单。" });
   });
 
-  it("bills the first active subscription and stamps paidAt from ref", () => {
+  it("prefills the first active subscription and today's date", () => {
     const s = stateWith([{ fee: "49", dueDate: "2026-08-01" }]);
-    const next = unwrap(addBill(s, REF));
-    expect(next.bills).toHaveLength(1);
-    expect(next.bills[0].subscriptionId).toBe("r1");
-    expect(next.bills[0].amount).toBe(49);
-    expect(next.bills[0].paidAt).toBe("2026-07-15");
+    expect(unwrap(billDraftFor(s, REF))).toEqual({
+      subscriptionId: "r1",
+      amount: "49",
+      paidAt: "2026-07-15",
+      orderId: "",
+      note: "",
+    });
   });
 
   // 回归：USD 订阅记账时必须折算成 ¥，否则预算口径长期失准。
   it("converts a USD fee to CNY at USD_CNY_RATE", () => {
     const s = stateWith([{ fee: "US$20", dueDate: "2026-08-01" }]);
-    const next = unwrap(addBill(s, REF));
-    expect(next.bills[0].amount).toBeCloseTo(20 * USD_CNY_RATE, 2);
+    expect(unwrap(billDraftFor(s, REF)).amount).toBe(String(20 * USD_CNY_RATE));
   });
 
   it("leaves a CNY fee unconverted", () => {
     const s = stateWith([{ fee: "¥49", dueDate: "2026-08-01" }]);
-    expect(unwrap(addBill(s, REF)).bills[0].amount).toBe(49);
+    expect(unwrap(billDraftFor(s, REF)).amount).toBe("49");
   });
 
-  it("skips expired rows and bills the first non-expired one", () => {
+  it("skips expired rows and prefills the first non-expired one", () => {
     const s = stateWith([
       { plan: "Expired", fee: "10", dueDate: "2026-07-01" },
       { plan: "Active", fee: "20", dueDate: "2026-08-01" },
     ]);
-    const next = unwrap(addBill(s, REF));
-    expect(next.bills[0].subscriptionId).toBe("r2");
+    expect(unwrap(billDraftFor(s, REF)).subscriptionId).toBe("r2");
   });
 
   it("falls back to the first row when nothing is active", () => {
     const s = stateWith([{ fee: "10", subscribed: false }]);
-    const next = unwrap(addBill(s, REF));
-    expect(next.bills[0].subscriptionId).toBe("r1");
+    expect(unwrap(billDraftFor(s, REF)).subscriptionId).toBe("r1");
+  });
+
+  it("leaves amount blank when the fee is unparseable", () => {
+    const s = stateWith([{ fee: "", dueDate: "2026-08-01" }]);
+    expect(unwrap(billDraftFor(s, REF)).amount).toBe("");
+  });
+});
+
+describe("addBillWithDetails", () => {
+  const draft = (over: Partial<BillDraft> = {}): BillDraft => ({
+    subscriptionId: "r1",
+    amount: "88",
+    paidAt: "2026-07-10",
+    orderId: "ORD-1",
+    note: "手动记账",
+    ...over,
+  });
+
+  it("adds a bill with every field the user entered", () => {
+    const s = stateWith([{ fee: "49" }]);
+    const next = unwrap(addBillWithDetails(s, draft(), REF));
+    expect(next.bills).toHaveLength(1);
+    expect(next.bills[0]).toMatchObject({
+      subscriptionId: "r1",
+      amount: 88,
+      paidAt: "2026-07-10",
+      orderId: "ORD-1",
+      note: "手动记账",
+      kind: "payment",
+    });
+  });
+
+  it("lets the user bill a subscription other than the first", () => {
+    const s = stateWith([{ plan: "A" }, { plan: "B" }]);
+    const next = unwrap(addBillWithDetails(s, draft({ subscriptionId: "r2" }), REF));
+    expect(next.bills[0].subscriptionId).toBe("r2");
+  });
+
+  it("rejects a missing or unknown subscription", () => {
+    const s = stateWith([{ fee: "49" }]);
+    expect(addBillWithDetails(s, draft({ subscriptionId: "" }), REF)).toEqual({ error: "请选择关联订阅" });
+    expect(addBillWithDetails(s, draft({ subscriptionId: "nope" }), REF)).toEqual({ error: "请选择关联订阅" });
+  });
+
+  it("rejects a non-positive or unparseable amount", () => {
+    const s = stateWith([{ fee: "49" }]);
+    for (const amount of ["", "0", "abc", "-5"]) {
+      expect(addBillWithDetails(s, draft({ amount }), REF)).toEqual({ error: "请填写有效金额" });
+    }
+  });
+
+  it("parses currency-formatted amounts", () => {
+    const s = stateWith([{ fee: "49" }]);
+    expect(unwrap(addBillWithDetails(s, draft({ amount: "¥1,234.5" }), REF)).bills[0].amount).toBe(1234.5);
+  });
+
+  it("rejects an unparseable date but accepts relative input", () => {
+    const s = stateWith([{ fee: "49" }]);
+    expect(addBillWithDetails(s, draft({ paidAt: "not-a-date" }), REF)).toEqual({
+      error: "日期格式请使用 YYYY-MM-DD",
+    });
+    expect(unwrap(addBillWithDetails(s, draft({ paidAt: "今天" }), REF)).bills[0].paidAt).toBe("2026-07-15");
+  });
+
+  it("falls back to ref when the date is left blank", () => {
+    const s = stateWith([{ fee: "49" }]);
+    expect(unwrap(addBillWithDetails(s, draft({ paidAt: "" }), REF)).bills[0].paidAt).toBe("2026-07-15");
+  });
+});
+
+describe("updateBillDetails / billToDraft", () => {
+  const base = () =>
+    stateWith(
+      [{ plan: "A" }, { plan: "B" }],
+      [{ id: "b1", subscriptionId: "r1", amount: 10, paidAt: "2026-07-01", orderId: "X", note: "n", kind: "renewal" }]
+    );
+
+  it("round-trips a bill through billToDraft", () => {
+    const s = base();
+    expect(billToDraft(s.bills[0])).toEqual({
+      subscriptionId: "r1",
+      amount: "10",
+      paidAt: "2026-07-01",
+      orderId: "X",
+      note: "n",
+    });
+  });
+
+  it("updates every editable field at once", () => {
+    const s = base();
+    const next = unwrap(
+      updateBillDetails(
+        s,
+        "b1",
+        { subscriptionId: "r2", amount: "99.5", paidAt: "2026-07-20", orderId: "Y", note: "改过", },
+        REF
+      )
+    );
+    expect(next.bills).toHaveLength(1);
+    expect(next.bills[0]).toMatchObject({
+      id: "b1",
+      subscriptionId: "r2",
+      amount: 99.5,
+      paidAt: "2026-07-20",
+      orderId: "Y",
+      note: "改过",
+    });
+  });
+
+  it("keeps the bill id and its original kind", () => {
+    const s = base();
+    const next = unwrap(updateBillDetails(s, "b1", billToDraft(s.bills[0]), REF));
+    expect(next.bills[0].id).toBe("b1");
+    // kind 由续费流程决定，表单不该把 renewal 改成 payment
+    expect(next.bills[0].kind).toBe("renewal");
+  });
+
+  it("rejects an unknown bill id", () => {
+    const s = base();
+    expect(updateBillDetails(s, "nope", billToDraft(s.bills[0]), REF)).toEqual({ error: "未找到该账单" });
+  });
+
+  it("applies the same validation as adding", () => {
+    const s = base();
+    expect(updateBillDetails(s, "b1", { ...billToDraft(s.bills[0]), amount: "0" }, REF)).toEqual({
+      error: "请填写有效金额",
+    });
+    expect(updateBillDetails(s, "b1", { ...billToDraft(s.bills[0]), subscriptionId: "gone" }, REF)).toEqual({
+      error: "请选择关联订阅",
+    });
   });
 });
 
@@ -338,21 +469,21 @@ describe("updateRow", () => {
   });
 });
 
-describe("updateBill / deleteBill", () => {
-  const base = () =>
-    stateWith([{}], [{ id: "b1", subscriptionId: "r1", amount: 10, paidAt: "2026-07-01", orderId: "", note: "" }]);
-
-  it("parses amount through moneyValue and trims other fields", () => {
-    expect(updateBill(base(), "b1", "amount", "¥88").bills[0].amount).toBe(88);
-    expect(updateBill(base(), "b1", "orderId", "  X-1  ").bills[0].orderId).toBe("X-1");
+describe("deleteBill", () => {
+  it("removes a bill by id and leaves the others", () => {
+    const s = stateWith(
+      [{}],
+      [
+        { id: "b1", subscriptionId: "r1", amount: 10, paidAt: "2026-07-01" },
+        { id: "b2", subscriptionId: "r1", amount: 20, paidAt: "2026-07-02" },
+      ]
+    );
+    expect(deleteBill(s, "b1").bills.map((b) => b.id)).toEqual(["b2"]);
   });
 
-  it("ignores an unknown bill id", () => {
-    expect(updateBill(base(), "nope", "amount", "99").bills[0].amount).toBe(10);
-  });
-
-  it("removes a bill by id", () => {
-    expect(deleteBill(base(), "b1").bills).toHaveLength(0);
+  it("is a no-op for an unknown id", () => {
+    const s = stateWith([{}], [{ id: "b1", subscriptionId: "r1", amount: 10, paidAt: "2026-07-01" }]);
+    expect(deleteBill(s, "nope").bills).toHaveLength(1);
   });
 });
 
