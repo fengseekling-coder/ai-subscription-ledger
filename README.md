@@ -26,8 +26,18 @@ npm install
 | `npm run dev` | 启动 Tauri 桌面开发（`apps/desktop`） |
 | `npm run build` | 构建 core + 桌面前端 |
 | `npm run test:core` | 运行 `@ai-sub/core` 单元测试 |
-| `npm run parity` | 输出固定日期的 core demo 摘要（改 `stats`/`rules` 后必跑） |
+| `npm run parity` | 统计口径回归守卫：与 `scripts/parity-baseline.json` 比对，漂移则失败（改 `stats`/`rules`/`dates` 后必跑） |
+| `npm run parity -- --update` | 认可当前输出并重写基准（确认是预期改动后才用，需连同代码一起提交） |
 | `npm run check` | `test:core` + `parity` + `build`（CI 同款） |
+| `npm run lint` | ESLint（含 `react-hooks`，桌面前端生效） |
+
+Rust 侧（在 `apps/desktop/src-tauri` 下执行，CI 同款）：
+
+| 命令 | 说明 |
+|------|------|
+| `cargo test --lib` | `db.rs` 的密钥/加密/归档单元测试 |
+| `cargo clippy --all-targets -- -D warnings` | Clippy，零警告 |
+| `cargo fmt --check` | 格式检查（提交前跑 `cargo fmt`） |
 
 ## 构建：开发版与生产版
 
@@ -58,5 +68,6 @@ scripts/           # parity 等脚本
 
 ## 开发约定
 
-- 修改 `packages/core/src` 中与统计、续费、导入相关的代码后，执行 **`npm run parity`**。
+- 修改 `packages/core/src` 中与统计、续费、导入相关的代码后，执行 **`npm run parity`**。它会把固定参考日期（2026-07-05）下的 core demo 摘要与仓库里的 `scripts/parity-baseline.json` 逐项比对，不一致就列出漂移项并以非零码退出（CI 同款）。确认漂移是预期结果后，用 `npm run parity -- --update` 重写基准。
+- core 里凡是与「今天」有关的函数都接受可选的 `ref` 参数（`computeSummary`、`renewRow`、`addBill`、`pickDueDate` 等）。新增此类逻辑时一律从 `ref` 取当前时间，不要直接调 `todayLocalISO()` / `new Date()`——否则该函数无法被确定性地测试。
 - `sketches/`、`vacuum-cursor-state.sh` 为本地草稿/工具，不参与发行。
