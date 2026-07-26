@@ -10,6 +10,19 @@ export function moneyValue(raw: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * 费用字符串 → 以人民币为单位的金额：美元按参考汇率折算，人民币原值返回。
+ *
+ * 账本里一切「进入统计的金额」都必须过这里，否则同一份数据会出现两套货币基准
+ * （例如账单按 ¥144 入库、统计页的月费参考却按 ¥20 算，同一张表里差 7.2 倍）。
+ * 放在 money.ts 而非某个调用方内部，就是为了让 actions / analytics 共用一份口径。
+ */
+export function feeToCnyAmount(fee: string | number | null | undefined): number {
+  const v = moneyValue(fee);
+  if (v <= 0) return 0;
+  return looksLikeUsdFee(fee) ? Math.round(v * USD_CNY_RATE * 100) / 100 : v;
+}
+
 export function fmtMoney(n: number): string {
   // Display currency with appropriate precision:
   // - Whole numbers show without decimal: 100 → "¥100"

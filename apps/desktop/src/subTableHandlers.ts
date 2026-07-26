@@ -8,6 +8,7 @@ import {
   toggleSubscribe,
   type AppState,
 } from "@ai-sub/core";
+import { resolveLang, tFor } from "./i18n";
 import type { SubTableHandlers } from "./SubTable";
 import { confirmUnrenewedOrDelete } from "./SubTable";
 
@@ -19,6 +20,7 @@ export function buildSubTableHandlers(
   setDuePickIndex: (i: number) => void,
   options?: { renewNotice?: boolean }
 ): SubTableHandlers {
+  const t = tFor(resolveLang(state.language)).table;
   const renewNotice = options?.renewNotice !== false;
   return {
     onToggle: (i) => {
@@ -41,7 +43,7 @@ export function buildSubTableHandlers(
       }
       commit(next);
       if (renewNotice) {
-        showNotice(`${next.rows[i].plan} 已续费，续费日 → ${next.rows[i].dueDate}`);
+        showNotice(t.renewedNotice(next.rows[i].plan, next.rows[i].dueDate));
       }
     },
     onMarkUnrenewed: (i) => {
@@ -55,7 +57,7 @@ export function buildSubTableHandlers(
             return;
           }
           commit(result);
-          showNotice(`${row.plan} 已删除。`);
+          showNotice(t.deletedNotice(row.plan));
         },
         () => {
           const result = markUnrenewed(state, i, "unsubscribe");
@@ -64,8 +66,9 @@ export function buildSubTableHandlers(
             return;
           }
           commit(result);
-          showNotice(`${row.plan} 已改为未订阅。`);
-        }
+          showNotice(t.unsubscribedNotice(row.plan));
+        },
+        state.language
       );
     },
     onMarkExpired: (i) => {
@@ -85,7 +88,7 @@ export function buildSubTableHandlers(
       commit(result);
     },
     onDelete: (i) => {
-      if (confirm("确定删除这一行？")) {
+      if (confirm(t.confirmDeleteRow)) {
         const result = deleteRow(state, i);
         if ("error" in result) {
           showNotice(result.error, true);

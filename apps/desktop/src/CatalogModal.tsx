@@ -7,24 +7,27 @@ import {
   type CatalogSegment,
 } from "@ai-sub/core";
 import { useMemo, useState } from "react";
+import { categoryLabel } from "./categoryLabel";
+import { resolveLang, tFor, type Dict } from "./i18n";
 import { ModalCloseButton } from "./ui/Icon";
 
-const SEGMENTS: { id: CatalogSegment | "all"; label: string }[] = [
-  { id: "all", label: "全部" },
-  { id: "ai", label: "AI" },
-  { id: "relay", label: "中转" },
-  { id: "credit", label: "额度包" },
-  { id: "dev", label: "开发" },
-  { id: "design", label: "设计" },
-  { id: "media", label: "影音" },
-  { id: "office", label: "办公" },
-  { id: "cloud", label: "云" },
+/** id 是筛选用的数据键，label 走字典。 */
+const SEGMENTS: { id: CatalogSegment | "all"; label: (t: Dict["catalog"]) => string }[] = [
+  { id: "all", label: (t) => t.segAll },
+  { id: "ai", label: () => "AI" },
+  { id: "relay", label: (t) => t.segRelay },
+  { id: "credit", label: (t) => t.segCredit },
+  { id: "dev", label: (t) => t.segDev },
+  { id: "design", label: (t) => t.segDesign },
+  { id: "media", label: (t) => t.segMedia },
+  { id: "office", label: (t) => t.segOffice },
+  { id: "cloud", label: (t) => t.segCloud },
 ];
 
-function syncBadge(tier: CatalogEntry["syncTier"]) {
-  if (tier === "paste") return <span className="catalog-badge catalog-badge--auto">可粘贴入账</span>;
-  if (tier === "email") return <span className="catalog-badge">邮件（规划）</span>;
-  if (tier === "oauth") return <span className="catalog-badge catalog-badge--monitor">可自动监控</span>;
+function syncBadge(tier: CatalogEntry["syncTier"], t: Dict["catalog"]) {
+  if (tier === "paste") return <span className="catalog-badge catalog-badge--auto">{t.badgePaste}</span>;
+  if (tier === "email") return <span className="catalog-badge">{t.badgeEmail}</span>;
+  if (tier === "oauth") return <span className="catalog-badge catalog-badge--monitor">{t.badgeOauth}</span>;
   return null;
 }
 
@@ -37,6 +40,8 @@ export function CatalogModal({
   onClose: () => void;
   onCommit: (next: AppState) => void;
 }) {
+  const dict = tFor(resolveLang(state.language));
+  const t = dict.catalog;
   const [q, setQ] = useState("");
   const [segment, setSegment] = useState<CatalogSegment | "all">("all");
 
@@ -58,14 +63,14 @@ export function CatalogModal({
       <div className="modal__panel catalog-panel">
         <div className="modal__head">
           <h2 id="catalog-title" className="modal__title">
-            服务库
+            {t.title}
           </h2>
-          <ModalCloseButton onClick={onClose} />
+          <ModalCloseButton onClick={onClose} label={dict.common.close} />
         </div>
         <div className="catalog-toolbar">
           <input
             type="search"
-            placeholder="搜索 ChatGPT、Cursor、中转…"
+            placeholder={t.searchPlaceholder}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             autoFocus
@@ -78,23 +83,23 @@ export function CatalogModal({
                 className={segment === s.id ? "active" : ""}
                 onClick={() => setSegment(s.id)}
               >
-                {s.label}
+                {s.label(t)}
               </button>
             ))}
           </div>
         </div>
-        <p className="catalog-hint">支持自动入账的排在前面（粘贴 JSON / 订单文本）。不含日常网购与银行流水。</p>
+        <p className="catalog-hint">{t.hint}</p>
         <ul className="catalog-list">
           {entries.map((e) => (
             <li key={e.id} className="catalog-item">
               <div className="catalog-item__main">
                 <div className="catalog-item__plan">
                   {e.plan}
-                  {syncBadge(e.syncTier)}
+                  {syncBadge(e.syncTier, t)}
                 </div>
                 <div className="catalog-item__meta">
-                  <span className={`category ${categoryClass(e.category)}`}>{e.category}</span>
-                  <span>参考 ¥{e.feeHint}</span>
+                  <span className={`category ${categoryClass(e.category)}`}>{categoryLabel(e.category, dict.table)}</span>
+                  <span>{t.feeHint(String(e.feeHint))}</span>
                   {(e.tags || []).slice(0, 3).map((t) => (
                     <span key={t} className="catalog-tag">
                       {t}
@@ -104,16 +109,16 @@ export function CatalogModal({
               </div>
               <div className="catalog-item__actions">
                 <button type="button" onClick={() => add(e.id, false)}>
-                  加入清单
+                  {t.addToWishlist}
                 </button>
                 <button type="button" className="primary" onClick={() => add(e.id, true)}>
-                  已订阅
+                  {t.alreadySubscribed}
                 </button>
               </div>
             </li>
           ))}
         </ul>
-        {entries.length === 0 && <p className="catalog-empty">没有匹配的服务，可用「新增订阅」自定义。</p>}
+        {entries.length === 0 && <p className="catalog-empty">{t.empty}</p>}
       </div>
     </div>
   );

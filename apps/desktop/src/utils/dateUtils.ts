@@ -38,6 +38,41 @@ export function formatDateCN(date: Date): string {
   return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
+const EN_MONTHS_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/** 按语言给出「已选日期」的展示文案。 */
+export function formatDateForLang(date: Date, lang: "zh-CN" | "en"): string {
+  if (lang === "en") {
+    return `${EN_MONTHS_SHORT[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+  }
+  return formatDateCN(date);
+}
+
+/** 按语言给出日历头部的「年月」。 */
+export function formatYearMonthForLang(year: number, month: number, lang: "zh-CN" | "en"): string {
+  if (lang === "en") return `${EN_MONTHS_SHORT[month]} ${year}`;
+  return formatYearMonth(year, month);
+}
+
+/** "2026-07" → 「2026年7月」/「Jul 2026」。core 的 spendByMonth 只提供中文 label，
+ *  这里改用它同时给出的结构化 monthKey 自行格式化。 */
+export function formatMonthKeyForLang(monthKey: string, lang: "zh-CN" | "en"): string {
+  const [y, m] = monthKey.split("-");
+  const monthIdx = Number(m) - 1;
+  if (Number.isNaN(monthIdx) || monthIdx < 0 || monthIdx > 11) return monthKey;
+  return formatYearMonthForLang(Number(y), monthIdx, lang);
+}
+
+export const WEEKDAYS_EN = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+/** 按语言给出星期表头。 */
+export function weekdaysForLang(lang: "zh-CN" | "en"): string[] {
+  return lang === "en" ? WEEKDAYS_EN : WEEKDAYS_CN;
+}
+
 /**
  * Format year and month for calendar header
  * e.g., "2024年7月"
@@ -112,10 +147,3 @@ export function nextMonth(year: number, month: number): [number, number] {
  */
 export const WEEKDAYS_CN = ["日", "一", "二", "三", "四", "五", "六"];
 
-/**
- * Chinese month names
- */
-export const MONTHS_CN = [
-  "1月", "2月", "3月", "4月", "5月", "6月",
-  "7月", "8月", "9月", "10月", "11月", "12月",
-];

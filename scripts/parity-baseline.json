@@ -1,0 +1,16 @@
+{
+  "ref": "2026-07-05",
+  "monthSpend": 20,
+  "monthSpendFmt": "¥20",
+  "budgetLeft": 480,
+  "budgetLeftFmt": "¥480",
+  "nearestPlan": "示例月费工具 A",
+  "nearestDueDate": "2026-07-08",
+  "nearestLeft": 3,
+  "pendingRenewCount": 1,
+  "pendingPlans": [
+    "示例月费工具 A"
+  ],
+  "billCount": 1,
+  "rowCount": 3
+}

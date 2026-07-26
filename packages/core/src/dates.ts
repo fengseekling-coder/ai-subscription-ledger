@@ -47,8 +47,13 @@ export function nextMonthlyDueDate(iso: string | undefined, ref = new Date()): s
   return formatDate(due);
 }
 
-/** 将用户输入规范为 YYYY-MM-DD，无效则返回 null；空串返回 "" */
-export function normalizeDateInput(raw: unknown): string | null {
+/**
+ * 将用户输入规范为 YYYY-MM-DD，无效则返回 null；空串返回 ""。
+ *
+ * `ref` 是「今天」的参考时刻，只影响相对格式（今天/明天/昨天/+3/-5）。
+ * 显式传入可让调用方（及其测试）不依赖真实时钟。
+ */
+export function normalizeDateInput(raw: unknown, ref = new Date()): string | null {
   const s = String(raw ?? "").trim();
   if (!s) return "";
   // ISO format
@@ -74,7 +79,7 @@ export function normalizeDateInput(raw: unknown): string | null {
     return Number.isNaN(d.getTime()) ? null : iso;
   }
   // Relative dates
-  const today = new Date();
+  const today = new Date(ref);
   const lower = s.toLowerCase();
   if (lower === "today" || lower === "今天") return formatDate(today);
   if (lower === "tomorrow" || lower === "明天") {
@@ -87,7 +92,7 @@ export function normalizeDateInput(raw: unknown): string | null {
     yd.setDate(today.getDate() - 1);
     return formatDate(yd);
   }
-  // Relative: +3, -5, +3天, -5天
+  // Relative: +3, -5, +3天， -5天
   const relMatch = s.match(/^([+-]\d+)\s*(?:天|days?)?$/i);
   if (relMatch) {
     const days = parseInt(relMatch[1], 10);
@@ -99,8 +104,8 @@ export function normalizeDateInput(raw: unknown): string | null {
 }
 
 /** 验证日期格式是否有效，返回提示信息 */
-export function validateDateInput(raw: unknown): { valid: boolean; message?: string; normalized?: string } {
-  const result = normalizeDateInput(raw);
+export function validateDateInput(raw: unknown, ref = new Date()): { valid: boolean; message?: string; normalized?: string } {
+  const result = normalizeDateInput(raw, ref);
   if (result === null) {
     return { valid: false, message: "日期格式无效，请使用 YYYY-MM-DD 或 今天/明天/+3 等格式" };
   }

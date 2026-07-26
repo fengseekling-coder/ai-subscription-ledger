@@ -1,5 +1,6 @@
 import {
-  addBill,
+  billDraftFor,
+  billToDraft,
   billsForCalendarMonth,
   computeSummary,
   expiredRowEntries,
@@ -9,8 +10,10 @@ import {
   sortedBills,
   visibleRowEntries,
   type AppState,
+  type BillDraft,
 } from "@ai-sub/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BillFormModal } from "./BillFormModal";
 import { BillsView } from "./BillsView";
 import { CatalogModal } from "./CatalogModal";
 import { Dashboard } from "./Dashboard";
@@ -18,13 +21,14 @@ import { DueDatePickerModal } from "./DueDatePickerModal";
 import { MonitorModal } from "./MonitorModal";
 import { PendingView } from "./PendingView";
 import { SettingsModal } from "./SettingsModal";
-import { resolveLang, tFor, type LangPref } from "./i18n";
+import { resolveLang, tFor, type Dict, type LangPref } from "./i18n";
 import { applyAppearance, type Appearance } from "./theme";
 import { StatsView } from "./StatsView";
 import { SubTable } from "./SubTable";
 import { buildSubTableHandlers } from "./subTableHandlers";
 import { SubscriptionFormModal, type SubscriptionFormDraft } from "./SubscriptionFormModal";
-import { loadAppState, persistAppState } from "./storage";
+import { loadAppState } from "./storage";
+import { useDebouncedPersistence } from "./useDebouncedPersistence";
 import { useRenewReminders } from "./useRenewReminders";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -44,67 +48,12 @@ const NEW_SUBSCRIPTION_DRAFT: SubscriptionFormDraft = {
   expired: false,
 };
 
-// Custom hook for debounced persistence with flush-on-hide + flush-on-unload
-function useDebouncedPersistence(state: AppState | null) {
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const stateRef = useRef<AppState | null>(null);
-  stateRef.current = state;
-
-  useEffect(() => {
-    if (!state) return;
-    
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      persistAppState(state).catch(() => {});
-    }, 200);
-
-    return () => {
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current);
-      }
-    };
-  }, [state]);
-
-  // Flush pending save immediately when the window becomes hidden or the
-  // page is about to unload. Without this, force-kill / OS sleep / immediate
-  // window close within the 200 ms debounce window loses the latest edit.
-  useEffect(() => {
-    const flush = () => {
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current);
-        saveTimer.current = null;
-      }
-      const current = stateRef.current;
-      if (current) {
-        void persistAppState(current);
-      }
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === "hidden") flush();
-    };
-    window.addEventListener("beforeunload", flush);
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      window.removeEventListener("beforeunload", flush);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, []);
-
-  // Flush on unmount
-  useEffect(() => {
-    return () => {
-      if (saveTimer.current && stateRef.current) {
-        clearTimeout(saveTimer.current);
-        void persistAppState(stateRef.current);
-      }
-    };
-  }, []);
-
-  return stateRef;
-}
-
 // Custom hook for tray menu updates
-function useTrayMenu(state: AppState | null, summary: ReturnType<typeof computeSummary> | null) {
+function useTrayMenu(
+  state: AppState | null,
+  summary: ReturnType<typeof computeSummary> | null,
+  t: Dict["app"]
+) {
   const trayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -112,8 +61,8 @@ function useTrayMenu(state: AppState | null, summary: ReturnType<typeof computeS
     
     const nearest =
       summary.nearestPlan && summary.nearestDueDate
-        ? `下一续费：${summary.nearestPlan} · ${summary.nearestDueDate}`
-        : "下一续费：—";
+        ? t.trayNext(summary.nearestPlan, summary.nearestDueDate)
+        : t.trayNextNone;
 
     if (trayTimer.current) clearTimeout(trayTimer.current);
     trayTimer.current = setTimeout(() => {
@@ -129,27 +78,25 @@ function useTrayMenu(state: AppState | null, summary: ReturnType<typeof computeS
         trayTimer.current = null;
       }
     };
-  }, [state, summary]);
+  }, [state, summary, t]);
 }
 
 // Custom hook for window close handling
-function useWindowCloseHandler(stateRef: React.MutableRefObject<AppState | null>) {
+function useWindowCloseHandler(flushIfDirty: () => Promise<void>) {
   useEffect(() => {
     // 纯浏览器环境（vite dev 预览）没有 Tauri 窗口
     if (!("__TAURI_INTERNALS__" in window)) return;
     const w = getCurrentWindow();
     const unlisten = w.onCloseRequested(async (e) => {
-      const current = stateRef.current;
-      if (current) {
-        e.preventDefault();
-        await persistAppState(current);
-        await w.destroy();
-      }
+      e.preventDefault();
+      // 走同一个 flush：有改动才落盘，没改动就直接关，不把读出来的状态写回去。
+      await flushIfDirty();
+      await w.destroy();
     });
     return () => {
       void unlisten.then((fn) => fn());
     };
-  }, [stateRef]);
+  }, [flushIfDirty]);
 }
 
 // Navigation handler hook
@@ -205,11 +152,13 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showMonitor, setShowMonitor] = useState(false);
   const [notifyOn, setNotifyOn] = useState(localStorage.getItem("ai-sub-notify") === "on");
+  // 账单表单：新增时 billId 为 null，编辑时带上要改的账单 id
+  const [billForm, setBillForm] = useState<{ billId: string | null; draft: BillDraft } | null>(null);
   
   // Hooks
   const { notice, showNotice } = useNotice();
-  const stateRef = useDebouncedPersistence(state);
-  useWindowCloseHandler(stateRef);
+  const { flushIfDirty } = useDebouncedPersistence(state);
+  useWindowCloseHandler(flushIfDirty);
 
   // Derived state - memoized
   const lang = resolveLang(state?.language);
@@ -233,10 +182,10 @@ export default function App() {
     [state]
   );
 
-  // Load data
+  // Load data。isLoading 的初值已经是 true，且 showNotice 是稳定引用（useCallback([])），
+  // 本 effect 只在挂载时跑一次，所以不需要再 setIsLoading(true)。
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
     loadAppState()
       .then((s) => {
         if (!cancelled) setState(s);
@@ -244,7 +193,10 @@ export default function App() {
       .catch((e) => {
         if (!cancelled) {
           setState(null);
-          showNotice(e instanceof Error ? e.message : "加载数据失败", true);
+          // 用系统语言而不是 tr：此刻账本还没读出来，用户的语言偏好就存在里面，
+          // 无从得知。把 tr 列进依赖还会让语言一变就重新加载一次数据。
+          const boot = tFor(resolveLang(undefined)).app;
+          showNotice(e instanceof Error ? e.message : boot.loadFailed, true);
         }
       })
       .finally(() => {
@@ -256,7 +208,7 @@ export default function App() {
   }, [showNotice]);
 
   // Effects
-  useTrayMenu(state, summary);
+  useTrayMenu(state, summary, tr.app);
   useNavigation(setMode);
   const { toggleNotify } = useRenewReminders(state, notifyOn, showNotice);
 
@@ -272,10 +224,14 @@ export default function App() {
     };
   }, []);
 
-  // Auto-switch from pending if empty
+  // Auto-switch from pending if empty.
+  // 这里刻意保留 effect + setState：改成渲染期派生（mode 为 pending 且列表空时显示 subs）
+  // 会让待续费重新出现时视图自己跳回 pending，而现在是留在 subs 不动。行为不同，不顺手改。
+  /* eslint-disable react-hooks/set-state-in-effect -- 见上：派生写法会改变可见行为 */
   useEffect(() => {
     if (mode === "pending" && pending.length === 0) setMode("subs");
   }, [mode, pending.length]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Handlers
   const commit = useCallback((next: AppState) => {
@@ -284,7 +240,8 @@ export default function App() {
 
   const changeLanguage = useCallback((next: LangPref) => {
     setState((prev) => (prev ? { ...prev, language: next } : prev));
-    showNotice(next === "en" ? "Language: English" : next === "zh-CN" ? "语言：简体中文" : "语言：跟随系统");
+    // 用目标语言自己的字典报提示，切过去立刻就是新语言的说法
+    showNotice(tFor(resolveLang(next)).app.langSwitched);
   }, [showNotice]);
 
   const changeAppearance = useCallback((next: Appearance) => {
@@ -340,20 +297,32 @@ export default function App() {
     commit(r.state);
   }, [state, duePickIndex, commit, showNotice]);
 
+  const openAddBill = useCallback(() => {
+    if (!state) return;
+    // 预填第一个在用订阅与其折算金额，但一切都可在弹窗里改再存。
+    const draft = billDraftFor(state);
+    if ("error" in draft) {
+      showNotice(draft.error, true);
+      return;
+    }
+    setBillForm({ billId: null, draft });
+  }, [state, showNotice]);
+
+  const openEditBill = useCallback((billId: string) => {
+    if (!state) return;
+    const bill = state.bills.find((b) => b.id === billId);
+    if (!bill) return;
+    setBillForm({ billId, draft: billToDraft(bill) });
+  }, [state]);
+
   const handlePrimary = useCallback(() => {
     if (!state) return;
     if (mode === "bills") {
-      const r = addBill(state);
-      if ("error" in r) {
-        showNotice(r.error, true);
-        return;
-      }
-      commit(r);
-      showNotice("已添加账单");
+      openAddBill();
       return;
     }
     openAddSubscription();
-  }, [state, mode, commit, showNotice, openAddSubscription]);
+  }, [state, mode, openAddBill, openAddSubscription]);
 
   // Modal data
   const editRow = editIndex !== null && state ? state.rows[editIndex] : null;
@@ -391,7 +360,7 @@ export default function App() {
     return (
       <div className="app">
         <div className="loading-screen" style={{ color: "var(--danger)", display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
-          <div>数据加载失败，请重启应用或检查数据文件。</div>
+          <div>{tr.app.loadFailedHint}</div>
           <button
             type="button"
             className="primary"
@@ -399,11 +368,11 @@ export default function App() {
               setIsLoading(true);
               loadAppState()
                 .then((s) => setState(s))
-                .catch((e) => showNotice(e instanceof Error ? e.message : "加载数据失败", true))
+                .catch((e) => showNotice(e instanceof Error ? e.message : tr.app.loadFailed, true))
                 .finally(() => setIsLoading(false));
             }}
           >
-            重试
+            {tr.app.retry}
           </button>
         </div>
       </div>
@@ -413,7 +382,7 @@ export default function App() {
   if (!summary) {
     return (
       <div className="app">
-        <div className="loading-screen">加载中…</div>
+        <div className="loading-screen">{tr.app.loading}</div>
       </div>
     );
   }
@@ -444,13 +413,13 @@ export default function App() {
                 type="button"
                 className={notifyOn ? "is-on" : ""}
                 onClick={() => void toggleNotify(!notifyOn, setNotifyOn)}
-                title={notifyOn ? "续费提醒已开" : "续费提醒已关"}
-                aria-label={notifyOn ? "关闭续费提醒" : "开启续费提醒"}
+                title={notifyOn ? tr.app.remindersOnTitle : tr.app.remindersOffTitle}
+                aria-label={notifyOn ? tr.app.remindersTurnOff : tr.app.remindersTurnOn}
                 aria-pressed={notifyOn}
               >
                 <Icon name="bell" size={15} />
               </button>
-              <button type="button" onClick={() => setShowSettings(true)} title="设置" aria-label={tr.toolbar.settings}>
+              <button type="button" onClick={() => setShowSettings(true)} title={tr.toolbar.settings} aria-label={tr.toolbar.settings}>
                 <Icon name="settings" size={15} />
               </button>
             </div>
@@ -459,7 +428,7 @@ export default function App() {
       </header>
 
       <main className="main">
-        <nav className="seg-nav seg-nav--page" aria-label="页面">
+        <nav className="seg-nav seg-nav--page" aria-label={tr.app.pagesNav}>
           {(
             [
               ["subs", tr.nav.subs],
@@ -486,6 +455,7 @@ export default function App() {
             summary={summary}
             onCommit={commit}
             variant={mode === "subs" ? "full" : "compact"}
+            language={state.language}
           />
         )}
 
@@ -534,7 +504,7 @@ export default function App() {
         {mode === "subs" && subHandlers && (
           <section className="section">
             <div className="table-card">
-              <SubTable entries={subsEntries} {...subHandlers} />
+              <SubTable entries={subsEntries} language={state.language} {...subHandlers} />
             </div>
           </section>
         )}
@@ -542,13 +512,20 @@ export default function App() {
         {mode === "expired" && expiredSubHandlers && (
           <section className="section">
             <div className="table-card">
-              <SubTable entries={expiredEntries} {...expiredSubHandlers} />
+              <SubTable entries={expiredEntries} language={state.language} {...expiredSubHandlers} />
             </div>
           </section>
         )}
 
         {mode === "bills" && (
-          <BillsView state={state} bills={bills} onCommit={commit} onNotice={showNotice} />
+          <BillsView
+            state={state}
+            bills={bills}
+            onCommit={commit}
+            onNotice={showNotice}
+            onEdit={openEditBill}
+            language={state.language}
+          />
         )}
 
         {mode === "pending" && (
@@ -575,12 +552,26 @@ export default function App() {
         />
       )}
 
+      {billForm && state && (
+        <BillFormModal
+          mode={billForm.billId ? "edit" : "add"}
+          billId={billForm.billId ?? undefined}
+          draft={billForm.draft}
+          state={state}
+          onClose={() => setBillForm(null)}
+          onCommit={commit}
+          onNotice={showNotice}
+          language={state.language}
+        />
+      )}
+
       {duePickIndex !== null && state && (
         <DueDatePickerModal
-          plan={state.rows[duePickIndex]?.plan ?? "订阅"}
+          plan={state.rows[duePickIndex]?.plan ?? tr.app.fallbackPlan}
           defaultValue={
             state.rows[duePickIndex]?.dueDate || new Date().toISOString().slice(0, 10)
           }
+          language={state.language}
           onCancel={() => setDuePickIndex(null)}
           onConfirm={confirmDueDate}
         />
@@ -592,7 +583,7 @@ export default function App() {
           onClose={() => setShowCatalog(false)}
           onCommit={(next) => {
             commit(next);
-            showNotice("已从服务库添加");
+            showNotice(tr.app.addedFromCatalog);
           }}
         />
       )}

@@ -49,6 +49,17 @@ jobs:
       - name: Build core package
         run: npm run build -w @ai-sub/core
 
+      # desktop 的组件测试会 import "@ai-sub/core"，该包的 package.json 指向
+      # ./dist/index.js —— 必须放在上面的 build 之后，否则在没有本地残留 dist/
+      # 的干净 checkout 里（例如 CI）会直接报 "Failed to resolve entry"。
+      - name: Run desktop tests
+        run: npm run test:desktop
+
+      # 统计口径守卫：与 scripts/parity-baseline.json 比对，漂移即失败。
+      # 改动 stats/rules/dates 后如属预期，跑 `npm run parity -- --update` 重写基准。
+      - name: Check stats parity against baseline
+        run: npm run parity
+
       - name: Type check desktop
         run: cd apps/desktop && npx tsc --noEmit
 
@@ -77,6 +88,7 @@ jobs:
         with:
           toolchain: stable
           targets: ${{ matrix.target }}
+          components: clippy, rustfmt
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -85,6 +97,20 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # Rust 检查放在 macOS job：src-tauri 依赖 tauri/objc2 等，
+      # 在 Linux runner 上要额外装 GTK/WebKit 系统库才能编译。
+      - name: Check Rust formatting
+        working-directory: apps/desktop/src-tauri
+        run: cargo fmt --check
+
+      - name: Run Clippy
+        working-directory: apps/desktop/src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run Rust tests
+        working-directory: apps/desktop/src-tauri
+        run: cargo test --lib
 
       - name: Build application
         shell: bash

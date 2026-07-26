@@ -1,6 +1,10 @@
 import { fmtMoney, spendByCategory, spendByMonth, type AppState } from "@ai-sub/core";
+import { resolveLang, tFor } from "./i18n";
+import { formatMonthKeyForLang } from "./utils/dateUtils";
 
 export function StatsView({ state }: { state: AppState }) {
+  const lang = resolveLang(state.language);
+  const t = tFor(lang).stats;
   const byCat = spendByCategory(state);
   const byMonth = spendByMonth(state, 6);
   const maxMonth = Math.max(1, ...byMonth.map((m) => m.total));
@@ -9,14 +13,14 @@ export function StatsView({ state }: { state: AppState }) {
     <section className="section stats-section">
 <div className="stats-grid">
         <div className="table-card">
-          <h4 className="stats-subtitle">按分类（本月支出）</h4>
+          <h4 className="stats-subtitle">{t.byCategory}</h4>
           <table>
             <thead>
               <tr>
-                <th>分类</th>
-                <th>有效</th>
-                <th>本月支出</th>
-                <th>月费参考</th>
+                <th>{t.category}</th>
+                <th>{t.active}</th>
+                <th>{t.monthSpend}</th>
+                <th>{t.feeRef}</th>
               </tr>
             </thead>
             <tbody>
@@ -35,7 +39,7 @@ export function StatsView({ state }: { state: AppState }) {
               {byCat.length === 0 && (
                 <tr>
                   <td colSpan={4} className="due-muted">
-                    暂无数据
+                    {t.noData}
                   </td>
                 </tr>
               )}
@@ -44,11 +48,11 @@ export function StatsView({ state }: { state: AppState }) {
         </div>
 
         <div className="table-card">
-          <h4 className="stats-subtitle">近 6 个月支出</h4>
+          <h4 className="stats-subtitle">{t.last6Months}</h4>
           <ul className="month-bars">
             {byMonth.map((m) => (
               <li key={m.monthKey} className="month-bars__row">
-                <span className="month-bars__label">{m.label}</span>
+                <span className="month-bars__label">{formatMonthKeyForLang(m.monthKey, lang)}</span>
                 <div className="month-bars__track">
                   <div
                     className="month-bars__fill"
@@ -57,7 +61,7 @@ export function StatsView({ state }: { state: AppState }) {
                 </div>
                 <span className="month-bars__value">
                   {fmtMoney(m.total)}
-                  <span className="due-muted"> · {m.billCount} 笔</span>
+                  <span className="due-muted"> · {t.billCount(m.billCount)}</span>
                 </span>
               </li>
             ))}

@@ -1,25 +1,29 @@
 import { deleteBill, fmtMoney, subById, type AppState, type Bill } from "@ai-sub/core";
+import { resolveLang, tFor } from "./i18n";
 
 type Props = {
   state: AppState;
   bills: Bill[];
   onCommit: (next: AppState) => void;
   onNotice: (text: string, danger?: boolean) => void;
+  onEdit: (billId: string) => void;
+  language: AppState["language"];
 };
 
-export function BillsView({ state, bills, onCommit, onNotice }: Props) {
+export function BillsView({ state, bills, onCommit, onNotice, onEdit, language }: Props) {
+  const t = tFor(resolveLang(language)).bills;
   return (
     <section className="section">
       <div className="table-card">
         <table>
           <thead>
             <tr>
-              <th>日期</th>
-              <th>关联订阅</th>
-              <th>金额</th>
-              <th>订单号</th>
-              <th>备注</th>
-              <th aria-label="操作" />
+              <th>{t.date}</th>
+              <th>{t.linkedSub}</th>
+              <th>{t.amount}</th>
+              <th>{t.orderId}</th>
+              <th>{t.note}</th>
+              <th aria-label={t.edit} />
             </tr>
           </thead>
           <tbody>
@@ -31,8 +35,8 @@ export function BillsView({ state, bills, onCommit, onNotice }: Props) {
                     <span className="date-display">{bill.paidAt}</span>
                   </td>
                   <td>
-                    {sub?.plan ?? "（已删除订阅）"}
-                    {bill.kind === "renewal" && <span className="kind-tag">续费</span>}
+                    {sub?.plan ?? t.deletedSub}
+                    {bill.kind === "renewal" && <span className="kind-tag">{t.renewalTag}</span>}
                   </td>
                   <td>
                     <span>{fmtMoney(bill.amount)}</span>
@@ -47,14 +51,21 @@ export function BillsView({ state, bills, onCommit, onNotice }: Props) {
                     <div className="actions">
                       <button
                         type="button"
+                        onClick={() => onEdit(bill.id)}
+                        title={t.editTitle(sub?.plan ?? t.linkedSub)}
+                      >
+                        {t.edit}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => {
-                          if (confirm("确定删除这笔账单？")) {
+                          if (confirm(t.confirmDelete)) {
                             onCommit(deleteBill(state, bill.id));
-                            onNotice("账单已删除");
+                            onNotice(t.deleted);
                           }
                         }}
                       >
-                        删
+                        {t.delete}
                       </button>
                     </div>
                   </td>

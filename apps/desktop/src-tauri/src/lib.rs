@@ -37,7 +37,10 @@ fn ocr_image(data: Vec<u8>, width: u32, height: u32) -> Result<String, String> {
         return Err("图片尺寸不能为零".to_string());
     }
     if width > MAX_OCR_WIDTH || height > MAX_OCR_HEIGHT {
-        return Err(format!("图片尺寸超出限制（最大 {}x{}）", MAX_OCR_WIDTH, MAX_OCR_HEIGHT));
+        return Err(format!(
+            "图片尺寸超出限制（最大 {}x{}）",
+            MAX_OCR_WIDTH, MAX_OCR_HEIGHT
+        ));
     }
     let expected_len = (width as u64) * (height as u64) * 4;
     if (data.len() as u64) != expected_len {
@@ -49,7 +52,11 @@ fn ocr_image(data: Vec<u8>, width: u32, height: u32) -> Result<String, String> {
 // ── Monitor commands ──────────────────────────────────────────────────────────
 
 #[tauri::command]
-async fn check_monitor_cmd(monitor_id: String, service_id: String, api_key: String) -> Result<monitor::MonitorCheckResult, String> {
+async fn check_monitor_cmd(
+    monitor_id: String,
+    service_id: String,
+    api_key: String,
+) -> Result<monitor::MonitorCheckResult, String> {
     let input = monitor::MonitorInput {
         id: monitor_id,
         service_id,
@@ -63,7 +70,9 @@ async fn check_monitor_cmd(monitor_id: String, service_id: String, api_key: Stri
 }
 
 #[tauri::command]
-async fn check_all_monitors_cmd(monitors: Vec<monitor::MonitorInput>) -> Result<Vec<monitor::MonitorCheckResult>, String> {
+async fn check_all_monitors_cmd(
+    monitors: Vec<monitor::MonitorInput>,
+) -> Result<Vec<monitor::MonitorCheckResult>, String> {
     Ok(monitor::check_all_monitors(&monitors).await)
 }
 
@@ -73,7 +82,11 @@ fn get_supported_services() -> Vec<monitor::SupportedService> {
 }
 
 #[tauri::command]
-fn update_tray_menu(app: tauri::AppHandle, pending_count: u32, nearest_label: String) -> Result<(), String> {
+fn update_tray_menu(
+    app: tauri::AppHandle,
+    pending_count: u32,
+    nearest_label: String,
+) -> Result<(), String> {
     let Some(tray) = app.tray_by_id("main-tray") else {
         return Ok(());
     };
@@ -95,7 +108,11 @@ fn update_tray_menu(app: tauri::AppHandle, pending_count: u32, nearest_label: St
 
 // ── Tray setup ────────────────────────────────────────────────────────────────
 
-fn build_tray_menu(app: &tauri::AppHandle, pending_title: &str, nearest: &str) -> Result<Menu<tauri::Wry>, tauri::Error> {
+fn build_tray_menu(
+    app: &tauri::AppHandle,
+    pending_title: &str,
+    nearest: &str,
+) -> Result<Menu<tauri::Wry>, tauri::Error> {
     let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
     let pending = MenuItem::with_id(app, "pending", pending_title, true, None::<&str>)?;
     let nearest_item = MenuItem::with_id(app, "nearest", nearest, false, None::<&str>)?;
@@ -187,28 +204,57 @@ pub fn run() {
                                     let id = v.get("id")?.as_str()?.to_string();
                                     let service_id = v.get("serviceId")?.as_str()?.to_string();
                                     let api_key = v.get("apiKey")?.as_str()?.to_string();
-                                    Some(monitor::MonitorInput { id, service_id, api_key })
+                                    Some(monitor::MonitorInput {
+                                        id,
+                                        service_id,
+                                        api_key,
+                                    })
                                 })
                                 .collect();
                             if inputs.is_empty() {
                                 continue;
                             }
-                            let results =
-                                futures_lite::future::block_on(monitor::check_all_monitors(&inputs));
+                            let results = futures_lite::future::block_on(
+                                monitor::check_all_monitors(&inputs),
+                            );
                             let now = chrono::Utc::now().to_rfc3339();
                             let mut updated_monitors = monitors_json.clone();
                             for r in &results {
                                 if let Some(v) = updated_monitors.iter_mut().find(|m| {
-                                    m.get("id").and_then(|x| x.as_str()) == Some(r.monitor_id.as_str())
+                                    m.get("id").and_then(|x| x.as_str())
+                                        == Some(r.monitor_id.as_str())
                                 }) {
                                     if let Some(obj) = v.as_object_mut() {
-                                        obj.insert("lastChecked".into(), serde_json::Value::String(now.clone()));
-                                        obj.insert("status".into(), serde_json::Value::String(r.status.clone()));
-                                        obj.insert("statusDetail".into(), serde_json::Value::String(r.status_detail.clone()));
-                                        obj.insert("remotePlan".into(), serde_json::Value::String(r.remote_plan.clone()));
-                                        obj.insert("remoteAmount".into(), serde_json::json!(r.remote_amount));
-                                        obj.insert("remoteRenewalDate".into(), serde_json::Value::String(r.remote_renewal_date.clone()));
-                                        obj.insert("errorMessage".into(), serde_json::Value::String(r.error_message.clone()));
+                                        obj.insert(
+                                            "lastChecked".into(),
+                                            serde_json::Value::String(now.clone()),
+                                        );
+                                        obj.insert(
+                                            "status".into(),
+                                            serde_json::Value::String(r.status.clone()),
+                                        );
+                                        obj.insert(
+                                            "statusDetail".into(),
+                                            serde_json::Value::String(r.status_detail.clone()),
+                                        );
+                                        obj.insert(
+                                            "remotePlan".into(),
+                                            serde_json::Value::String(r.remote_plan.clone()),
+                                        );
+                                        obj.insert(
+                                            "remoteAmount".into(),
+                                            serde_json::json!(r.remote_amount),
+                                        );
+                                        obj.insert(
+                                            "remoteRenewalDate".into(),
+                                            serde_json::Value::String(
+                                                r.remote_renewal_date.clone(),
+                                            ),
+                                        );
+                                        obj.insert(
+                                            "errorMessage".into(),
+                                            serde_json::Value::String(r.error_message.clone()),
+                                        );
                                     }
                                 }
                             }
