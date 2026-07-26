@@ -1,6 +1,7 @@
 import type { AppState, Monitor } from "@ai-sub/core";
 import { newId } from "@ai-sub/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { resolveLang, tFor, type Dict } from "./i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { ModalCloseButton } from "./ui/Icon";
 
@@ -34,13 +35,14 @@ function maskKey(key: string): string {
   return key.slice(0, 4) + "****" + key.slice(-4);
 }
 
-function statusLabel(status: string): string {
+/** status 是后端返回的数据值，只有展示文案本地化。 */
+function statusLabel(status: string, t: Dict["monitor"]): string {
   switch (status) {
-    case "active": return "正常";
-    case "expired": return "已过期";
-    case "error": return "错误";
-    case "unknown": return "待检查";
-    default: return "未知";
+    case "active": return t.statusActive;
+    case "expired": return t.statusExpired;
+    case "error": return t.statusError;
+    case "unknown": return t.statusUnknown;
+    default: return t.statusOther;
   }
 }
 
@@ -61,6 +63,8 @@ interface Props {
 }
 
 export function MonitorModal({ state, onClose, onCommit }: Props) {
+  const lang = resolveLang(state.language);
+  const t = tFor(lang).monitor;
   // useMemo：`?? []` 每次渲染都会新建数组，会让所有依赖 monitors 的 useCallback 失效。
   const monitors = useMemo(() => state.monitors ?? [], [state.monitors]);
   const [services, setServices] = useState<SupportedService[]>([]);
@@ -192,7 +196,9 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
             r.status === "fulfilled" && r.value.monitor.id === m.id
         );
         if (!settled) {
-          return { ...m, lastChecked: now, status: "error" as const, errorMessage: "请求失败" };
+          return { ...m, lastChecked: now, status: "error" as const, // 不本地化：errorMessage 是会被持久化的数据，且同一字段的其他取值来自
+            // Rust 后端（本身就是中文），只翻这一个 JS 兜底反而不一致。
+            errorMessage: "请求失败" };
         }
         const { result } = settled.value;
         return {
@@ -213,12 +219,12 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
       <div className="modal__backdrop" onClick={onClose} />
       <div className="modal__panel catalog-panel">
         <div className="modal__head">
-          <h2 id="monitor-title" className="modal__title">自动监控</h2>
-          <ModalCloseButton onClick={onClose} />
+          <h2 id="monitor-title" className="modal__title">{t.title}</h2>
+          <ModalCloseButton onClick={onClose} label={tFor(lang).common.close} />
         </div>
         <div className="modal__body">
           <p className="catalog-hint" style={{ margin: "0 0 var(--space-3)" }}>
-            填入 API Key，自动查询订阅状态。Key 随数据加密存储在本地。
+            {t.desc}
           </p>
 
           {monitors.length > 0 && (
@@ -228,27 +234,27 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
                   <div className="monitor-item__info">
                     <div className="monitor-item__header">
                       <span className="monitor-item__service">{serviceLabel(m.serviceId)}</span>
-                      <span className={`monitor-status ${statusClass(m.status)}`}>{statusLabel(m.status)}</span>
+                      <span className={`monitor-status ${statusClass(m.status)}`}>{statusLabel(m.status, t)}</span>
                     </div>
                     <div className="monitor-item__key">{maskKey(m.apiKey)}</div>
-                    {m.remotePlan && <div className="monitor-item__detail">套餐: {m.remotePlan}</div>}
-                    {m.remoteRenewalDate && <div className="monitor-item__detail">续费日: {m.remoteRenewalDate}</div>}
+                    {m.remotePlan && <div className="monitor-item__detail">{t.planLabel(m.remotePlan)}</div>}
+                    {m.remoteRenewalDate && <div className="monitor-item__detail">{t.dueLabel(m.remoteRenewalDate)}</div>}
                     {m.statusDetail && <div className="monitor-item__detail">{m.statusDetail}</div>}
                     {m.errorMessage && <div className="monitor-item__error">{m.errorMessage}</div>}
                     <div className="monitor-item__meta">
-                      {m.lastChecked ? `上次检查: ${new Date(m.lastChecked).toLocaleString("zh-CN")}` : "尚未检查"}
+                      {m.lastChecked ? t.lastChecked(new Date(m.lastChecked).toLocaleString(lang)) : t.notChecked}
                     </div>
                   </div>
                   <div className="monitor-item__actions">
                     <button type="button" className="btn btn--sm" disabled={checkingId === m.id} onClick={() => refreshMonitor(m)}>
-                      {checkingId === m.id ? "检查中…" : "刷新"}
+                      {checkingId === m.id ? t.checking : t.refresh}
                     </button>
-                    <button type="button" className="btn btn--sm btn--danger" onClick={() => removeMonitor(m.id)}>删除</button>
+                    <button type="button" className="btn btn--sm btn--danger" onClick={() => removeMonitor(m.id)}>{t.remove}</button>
                   </div>
                 </div>
               ))}
               <button type="button" className="btn btn--sm" style={{ alignSelf: "flex-start", marginTop: "var(--space-2)" }} onClick={refreshAll}>
-                全部刷新
+                {t.refreshAll}
               </button>
             </div>
           )}
@@ -256,7 +262,7 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
           {adding ? (
             <div className="monitor-add">
               <div className="form-field">
-                <label>服务</label>
+                <label>{t.service}</label>
                 <select className="select" value={selectedService} onChange={(e) => { setSelectedService(e.target.value); setTestResult(null); }}>
                   {services.map((s) => (
                     <option key={s.id} value={s.id}>{s.label} — {s.desc}</option>
@@ -272,18 +278,20 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
               </div>
               {testResult && (
                 <div className={"modal-notice" + (testResult.status === "error" ? " danger" : "")}>
-                  {testResult.status === "error" ? `验证失败: ${testResult.errorMessage}` : `验证通过 — ${testResult.statusDetail || "API Key 有效"}`}
+                  {testResult.status === "error"
+                    ? t.verifyFailed(testResult.errorMessage)
+                    : t.verifyOk(testResult.statusDetail || t.keyValid)}
                 </div>
               )}
               <div className="modal__foot-actions">
-                <button type="button" className="btn btn--ghost" onClick={() => { setAdding(false); setApiKey(""); setTestResult(null); }}>取消</button>
-                <button type="button" className="btn" disabled={testing || !apiKey.trim()} onClick={testConnection}>{testing ? "验证中…" : "测试连接"}</button>
-                <button type="button" className="primary" disabled={!testResult || testResult.status === "error"} onClick={confirmAdd}>添加</button>
+                <button type="button" className="btn btn--ghost" onClick={() => { setAdding(false); setApiKey(""); setTestResult(null); }}>{t.cancel}</button>
+                <button type="button" className="btn" disabled={testing || !apiKey.trim()} onClick={testConnection}>{testing ? t.testing : t.testConnection}</button>
+                <button type="button" className="primary" disabled={!testResult || testResult.status === "error"} onClick={confirmAdd}>{t.add}</button>
               </div>
             </div>
           ) : (
             <button type="button" className="primary" onClick={() => setAdding(true)} style={{ marginTop: monitors.length > 0 ? "var(--space-3)" : 0 }}>
-              添加监控
+              {t.addMonitor}
             </button>
           )}
         </div>

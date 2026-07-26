@@ -35,7 +35,7 @@ export function SettingsModal({
       <div className="settings-modal">
         <div className="settings-modal__head">
           <h2 className="settings-modal__title">{t.settings.title}</h2>
-          <ModalCloseButton className="settings-modal__close" onClick={onClose} />
+          <ModalCloseButton className="settings-modal__close" onClick={onClose} label={t.common.close} />
         </div>
 
         <div className="settings-modal__body">
@@ -123,14 +123,14 @@ export function SettingsModal({
 
           <div className="settings-row">
             <div className="settings-row__text">
-              <span className="settings-row__label">自动监控</span>
-              <span className="settings-row__desc">通过 API Key 自动查询订阅状态。</span>
+              <span className="settings-row__label">{t.settings.monitorTitle}</span>
+              <span className="settings-row__desc">{t.settings.monitorDesc}</span>
               {monitorCount > 0 && (
-                <span className="settings-row__hint">已配置 {monitorCount} 个监控</span>
+                <span className="settings-row__hint">{t.settings.monitorConfigured(monitorCount)}</span>
               )}
             </div>
             <button type="button" className="btn btn--sm" onClick={onOpenMonitor}>
-              管理
+              {t.settings.monitorManage}
             </button>
           </div>
 

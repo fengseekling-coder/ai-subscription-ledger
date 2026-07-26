@@ -17,7 +17,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { readImage } from "@tauri-apps/plugin-clipboard-manager";
 import { useEffect, useRef, useState } from "react";
 import { CalendarPicker } from "./CalendarPicker";
-import { resolveLang, tFor, type Dict } from "./i18n";
+import { categoryLabel } from "./categoryLabel";
+import { resolveLang, tFor } from "./i18n";
 import { Icon, ModalCloseButton } from "./ui/Icon";
 
 export type SubscriptionFormDraft = {
@@ -36,21 +37,6 @@ export type SubscriptionFormDraft = {
  * 只有 label 走字典本地化（与 SubTable 的 getCategoryStyle 同一套规则）。
  */
 const CATEGORY_VALUES = ["官方", "中转", "中转额度包", "其他"] as const;
-
-function categoryLabel(value: string, t: Dict["form"]): string {
-  switch (value) {
-    case "官方":
-      return t.catOfficial;
-    case "中转":
-      return t.catRelay;
-    case "中转额度包":
-      return t.catCredit;
-    case "其他":
-      return t.catOther;
-    default:
-      return value;
-  }
-}
 
 /** 从解析结果提取表单字段值，autoMatch 为 true 时自动匹配已有订阅 */
 function extractFields(
@@ -432,7 +418,7 @@ export function SubscriptionFormModal({
               {isAdd ? ft.form.addSubtitle : ft.form.editSubtitle}
             </p>
           </div>
-          <ModalCloseButton className="modal-close" onClick={onClose} />
+          <ModalCloseButton className="modal-close" onClick={onClose} label={ft.common.close} />
         </div>
 
         <div className="modal-body">
@@ -646,7 +632,7 @@ export function SubscriptionFormModal({
 
             {matchedSub && (
               <div className="form-match-banner">
-                已匹配「{matchedSub.plan}」，确认后将为其添加账单
+                {ft.form.matched(matchedSub.plan)}
               </div>
             )}
 
@@ -671,7 +657,7 @@ export function SubscriptionFormModal({
                       }`}
                       onClick={() => setCategory(value)}
                     >
-                      {categoryLabel(value, ft.form)}
+                      {categoryLabel(value, ft.table)}
                     </button>
                   ))}
                 </div>
@@ -815,7 +801,7 @@ export function SubscriptionFormModal({
                 showModalNotice(ft.form.delete);
               }}
             >
-              删除
+              {ft.form.delete}
             </button>
           ) : (
             <span />

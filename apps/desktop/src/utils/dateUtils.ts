@@ -57,6 +57,15 @@ export function formatYearMonthForLang(year: number, month: number, lang: "zh-CN
   return formatYearMonth(year, month);
 }
 
+/** "2026-07" → 「2026年7月」/「Jul 2026」。core 的 spendByMonth 只提供中文 label，
+ *  这里改用它同时给出的结构化 monthKey 自行格式化。 */
+export function formatMonthKeyForLang(monthKey: string, lang: "zh-CN" | "en"): string {
+  const [y, m] = monthKey.split("-");
+  const monthIdx = Number(m) - 1;
+  if (Number.isNaN(monthIdx) || monthIdx < 0 || monthIdx > 11) return monthKey;
+  return formatYearMonthForLang(Number(y), monthIdx, lang);
+}
+
 export const WEEKDAYS_EN = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
 /** 按语言给出星期表头。 */
@@ -138,10 +147,3 @@ export function nextMonth(year: number, month: number): [number, number] {
  */
 export const WEEKDAYS_CN = ["日", "一", "二", "三", "四", "五", "六"];
 
-/**
- * Chinese month names
- */
-export const MONTHS_CN = [
-  "1月", "2月", "3月", "4月", "5月", "6月",
-  "7月", "8月", "9月", "10月", "11月", "12月",
-];

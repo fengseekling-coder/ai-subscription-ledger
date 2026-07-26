@@ -126,12 +126,15 @@ export function Icon({ name, size = 16, className, ...rest }: IconProps) {
 export function ModalCloseButton({
   onClick,
   className = "modal__close",
+  label,
 }: {
   onClick: () => void;
   className?: string;
+  /** 无障碍名称。由调用方从字典传入，这里不猜语言。 */
+  label: string;
 }) {
   return (
-    <button type="button" className={className} aria-label="关闭" onClick={onClick}>
+    <button type="button" className={className} aria-label={label} onClick={onClick}>
       <Icon name="close" size={14} />
     </button>
   );

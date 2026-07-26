@@ -21,7 +21,7 @@ import { DueDatePickerModal } from "./DueDatePickerModal";
 import { MonitorModal } from "./MonitorModal";
 import { PendingView } from "./PendingView";
 import { SettingsModal } from "./SettingsModal";
-import { resolveLang, tFor, type LangPref } from "./i18n";
+import { resolveLang, tFor, type Dict, type LangPref } from "./i18n";
 import { applyAppearance, type Appearance } from "./theme";
 import { StatsView } from "./StatsView";
 import { SubTable } from "./SubTable";
@@ -49,7 +49,11 @@ const NEW_SUBSCRIPTION_DRAFT: SubscriptionFormDraft = {
 };
 
 // Custom hook for tray menu updates
-function useTrayMenu(state: AppState | null, summary: ReturnType<typeof computeSummary> | null) {
+function useTrayMenu(
+  state: AppState | null,
+  summary: ReturnType<typeof computeSummary> | null,
+  t: Dict["app"]
+) {
   const trayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -57,8 +61,8 @@ function useTrayMenu(state: AppState | null, summary: ReturnType<typeof computeS
     
     const nearest =
       summary.nearestPlan && summary.nearestDueDate
-        ? `下一续费：${summary.nearestPlan} · ${summary.nearestDueDate}`
-        : "下一续费：—";
+        ? t.trayNext(summary.nearestPlan, summary.nearestDueDate)
+        : t.trayNextNone;
 
     if (trayTimer.current) clearTimeout(trayTimer.current);
     trayTimer.current = setTimeout(() => {
@@ -74,7 +78,7 @@ function useTrayMenu(state: AppState | null, summary: ReturnType<typeof computeS
         trayTimer.current = null;
       }
     };
-  }, [state, summary]);
+  }, [state, summary, t]);
 }
 
 // Custom hook for window close handling
@@ -189,7 +193,10 @@ export default function App() {
       .catch((e) => {
         if (!cancelled) {
           setState(null);
-          showNotice(e instanceof Error ? e.message : "加载数据失败", true);
+          // 用系统语言而不是 tr：此刻账本还没读出来，用户的语言偏好就存在里面，
+          // 无从得知。把 tr 列进依赖还会让语言一变就重新加载一次数据。
+          const boot = tFor(resolveLang(undefined)).app;
+          showNotice(e instanceof Error ? e.message : boot.loadFailed, true);
         }
       })
       .finally(() => {
@@ -201,7 +208,7 @@ export default function App() {
   }, [showNotice]);
 
   // Effects
-  useTrayMenu(state, summary);
+  useTrayMenu(state, summary, tr.app);
   useNavigation(setMode);
   const { toggleNotify } = useRenewReminders(state, notifyOn, showNotice);
 
@@ -233,7 +240,8 @@ export default function App() {
 
   const changeLanguage = useCallback((next: LangPref) => {
     setState((prev) => (prev ? { ...prev, language: next } : prev));
-    showNotice(next === "en" ? "Language: English" : next === "zh-CN" ? "语言：简体中文" : "语言：跟随系统");
+    // 用目标语言自己的字典报提示，切过去立刻就是新语言的说法
+    showNotice(tFor(resolveLang(next)).app.langSwitched);
   }, [showNotice]);
 
   const changeAppearance = useCallback((next: Appearance) => {
@@ -352,7 +360,7 @@ export default function App() {
     return (
       <div className="app">
         <div className="loading-screen" style={{ color: "var(--danger)", display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
-          <div>数据加载失败，请重启应用或检查数据文件。</div>
+          <div>{tr.app.loadFailedHint}</div>
           <button
             type="button"
             className="primary"
@@ -360,11 +368,11 @@ export default function App() {
               setIsLoading(true);
               loadAppState()
                 .then((s) => setState(s))
-                .catch((e) => showNotice(e instanceof Error ? e.message : "加载数据失败", true))
+                .catch((e) => showNotice(e instanceof Error ? e.message : tr.app.loadFailed, true))
                 .finally(() => setIsLoading(false));
             }}
           >
-            重试
+            {tr.app.retry}
           </button>
         </div>
       </div>
@@ -374,7 +382,7 @@ export default function App() {
   if (!summary) {
     return (
       <div className="app">
-        <div className="loading-screen">加载中…</div>
+        <div className="loading-screen">{tr.app.loading}</div>
       </div>
     );
   }
@@ -405,13 +413,13 @@ export default function App() {
                 type="button"
                 className={notifyOn ? "is-on" : ""}
                 onClick={() => void toggleNotify(!notifyOn, setNotifyOn)}
-                title={notifyOn ? "续费提醒已开" : "续费提醒已关"}
-                aria-label={notifyOn ? "关闭续费提醒" : "开启续费提醒"}
+                title={notifyOn ? tr.app.remindersOnTitle : tr.app.remindersOffTitle}
+                aria-label={notifyOn ? tr.app.remindersTurnOff : tr.app.remindersTurnOn}
                 aria-pressed={notifyOn}
               >
                 <Icon name="bell" size={15} />
               </button>
-              <button type="button" onClick={() => setShowSettings(true)} title="设置" aria-label={tr.toolbar.settings}>
+              <button type="button" onClick={() => setShowSettings(true)} title={tr.toolbar.settings} aria-label={tr.toolbar.settings}>
                 <Icon name="settings" size={15} />
               </button>
             </div>
@@ -420,7 +428,7 @@ export default function App() {
       </header>
 
       <main className="main">
-        <nav className="seg-nav seg-nav--page" aria-label="页面">
+        <nav className="seg-nav seg-nav--page" aria-label={tr.app.pagesNav}>
           {(
             [
               ["subs", tr.nav.subs],
@@ -559,7 +567,7 @@ export default function App() {
 
       {duePickIndex !== null && state && (
         <DueDatePickerModal
-          plan={state.rows[duePickIndex]?.plan ?? "订阅"}
+          plan={state.rows[duePickIndex]?.plan ?? tr.app.fallbackPlan}
           defaultValue={
             state.rows[duePickIndex]?.dueDate || new Date().toISOString().slice(0, 10)
           }
@@ -575,7 +583,7 @@ export default function App() {
           onClose={() => setShowCatalog(false)}
           onCommit={(next) => {
             commit(next);
-            showNotice("已从服务库添加");
+            showNotice(tr.app.addedFromCatalog);
           }}
         />
       )}

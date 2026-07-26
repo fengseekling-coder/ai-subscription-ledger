@@ -9,6 +9,7 @@ export const LANGS: { value: LangPref; label: Record<Lang, string> }[] = [
 
 export type Dict = {
   brand: string;
+  common: { close: string };
   nav: { subs: string; stats: string; expired: string; bills: string; pending: string };
   toolbar: { add: string; addBill: string; catalog: string; theme: string; settings: string };
   dashboard: {
@@ -49,6 +50,10 @@ export type Dict = {
     security: string;
     securityNote1: string;
     securityNote2: string;
+    monitorTitle: string;
+    monitorDesc: string;
+    monitorConfigured: (n: number) => string;
+    monitorManage: string;
   };
   form: {
     addTitle: string;
@@ -84,11 +89,6 @@ export type Dict = {
     saving: string;
     matched: (plan: string) => string;
     feeError: string;
-    /** 分类选项的展示名。value 仍是中文数据值，只有 label 本地化。 */
-    catOfficial: string;
-    catRelay: string;
-    catCredit: string;
-    catOther: string;
     categoryRequired: string;
     planRequired: string;
     subDateInvalid: string;
@@ -123,11 +123,78 @@ export type Dict = {
     dueToday: string;
     overdueDays: (n: number) => string;
     daysLeft: (n: number) => string;
-    /** 已知分类的展示名；自定义分类原样显示 */
+    /** 已知分类的展示名；自定义分类原样显示。见 categoryLabel.ts */
     catOfficial: string;
     catRelay: string;
     catCredit: string;
+    catOther: string;
     unrenewedPrompt: (plan: string) => string;
+    confirmDeleteRow: string;
+    renewedNotice: (plan: string, due: string) => string;
+    deletedNotice: (plan: string) => string;
+    unsubscribedNotice: (plan: string) => string;
+  };
+  catalog: {
+    title: string;
+    searchPlaceholder: string;
+    hint: string;
+    empty: string;
+    segAll: string;
+    segRelay: string;
+    segCredit: string;
+    segDev: string;
+    segDesign: string;
+    segMedia: string;
+    segOffice: string;
+    segCloud: string;
+    badgePaste: string;
+    badgeEmail: string;
+    badgeOauth: string;
+    feeHint: (fee: string) => string;
+    addToWishlist: string;
+    alreadySubscribed: string;
+  };
+  monitor: {
+    title: string;
+    service: string;
+    statusActive: string;
+    statusExpired: string;
+    statusError: string;
+    statusUnknown: string;
+    statusOther: string;
+    lastChecked: (when: string) => string;
+    notChecked: string;
+    checking: string;
+    refresh: string;
+    remove: string;
+    verifyFailed: (msg: string) => string;
+    verifyOk: (detail: string) => string;
+    cancel: string;
+    testing: string;
+    testConnection: string;
+    add: string;
+    desc: string;
+    planLabel: (plan: string) => string;
+    dueLabel: (date: string) => string;
+    refreshAll: string;
+    keyValid: string;
+    addMonitor: string;
+  };
+  app: {
+    trayNext: (plan: string, date: string) => string;
+    trayNextNone: string;
+    loadFailed: string;
+    loadFailedHint: string;
+    retry: string;
+    loading: string;
+    remindersOnTitle: string;
+    remindersOffTitle: string;
+    remindersTurnOff: string;
+    remindersTurnOn: string;
+    pagesNav: string;
+    fallbackPlan: string;
+    addedFromCatalog: string;
+    langSwitched: string;
   };
   duePicker: {
     title: string;
@@ -147,6 +214,17 @@ export type Dict = {
     monthSpend: string;
     feeRef: string;
     last6Months: string;
+    noData: string;
+    billCount: (n: number) => string;
+  };
+  reminders: {
+    noneWithin3Days: string;
+    item: (plan: string, due: string, left: number) => string;
+    prefix: string;
+    notificationTitle: string;
+    permissionDenied: string;
+    turnedOn: string;
+    turnedOff: string;
   };
   pending: {
     meta: (date: string, left: number, fee: string) => string;
@@ -187,6 +265,7 @@ export type Dict = {
 
 const zh: Dict = {
   brand: "订阅账本",
+  common: { close: "关闭" },
   nav: { subs: "概览", stats: "统计", expired: "已过期", bills: "账单", pending: "待续费" },
   toolbar: { add: "新增订阅", addBill: "记一笔", catalog: "服务库", theme: "深色", settings: "设置" },
   dashboard: {
@@ -228,6 +307,10 @@ const zh: Dict = {
     security: "安全",
     securityNote1: "数据使用 AES-256-GCM 加密后存储在本地。",
     securityNote2: "设备丢失且知密码时，拥有 root 或物理访问者理论上仍可读取。",
+    monitorTitle: "自动监控",
+    monitorDesc: "通过 API Key 自动查询订阅状态。",
+    monitorConfigured: (n) => `已配置 ${n} 个监控`,
+    monitorManage: "管理",
   },
   form: {
     addTitle: "新增订阅",
@@ -263,10 +346,6 @@ const zh: Dict = {
     saving: "保存中…",
     matched: (plan) => `已匹配「${plan}」，确认后将为其添加账单`,
     feeError: "金额格式无效",
-    catOfficial: "官方",
-    catRelay: "中转",
-    catCredit: "额度",
-    catOther: "其他",
     categoryRequired: "请选择分类",
     planRequired: "请填写套餐名称",
     subDateInvalid: "订阅日期格式无效",
@@ -304,8 +383,75 @@ const zh: Dict = {
     catOfficial: "官方",
     catRelay: "中转",
     catCredit: "额度",
+    catOther: "其他",
     unrenewedPrompt: (plan) =>
       `${plan} 未续费：删除条目，还是改为未订阅？\n确定 = 删除，取消 = 改为未订阅`,
+    confirmDeleteRow: "确定删除这一行？",
+    renewedNotice: (plan, due) => `${plan} 已续费，续费日 → ${due}`,
+    deletedNotice: (plan) => `${plan} 已删除。`,
+    unsubscribedNotice: (plan) => `${plan} 已改为未订阅。`,
+  },
+  catalog: {
+    title: "服务库",
+    searchPlaceholder: "搜索 ChatGPT、Cursor、中转…",
+    hint: "支持自动入账的排在前面（粘贴 JSON / 订单文本）。不含日常网购与银行流水。",
+    empty: "没有匹配的服务，可用「新增订阅」自定义。",
+    segAll: "全部",
+    segRelay: "中转",
+    segCredit: "额度包",
+    segDev: "开发",
+    segDesign: "设计",
+    segMedia: "影音",
+    segOffice: "办公",
+    segCloud: "云",
+    badgePaste: "可粘贴入账",
+    badgeEmail: "邮件（规划）",
+    badgeOauth: "可自动监控",
+    feeHint: (fee) => `参考 ¥${fee}`,
+    addToWishlist: "加入清单",
+    alreadySubscribed: "已订阅",
+  },
+  monitor: {
+    title: "自动监控",
+    service: "服务",
+    statusActive: "正常",
+    statusExpired: "已过期",
+    statusError: "错误",
+    statusUnknown: "待检查",
+    statusOther: "未知",
+    lastChecked: (when) => `上次检查: ${when}`,
+    notChecked: "尚未检查",
+    checking: "检查中…",
+    refresh: "刷新",
+    remove: "删除",
+    verifyFailed: (msg) => `验证失败: ${msg}`,
+    verifyOk: (detail) => `验证通过 — ${detail}`,
+    cancel: "取消",
+    testing: "验证中…",
+    testConnection: "测试连接",
+    add: "添加",
+    desc: "填入 API Key，自动查询订阅状态。Key 随数据加密存储在本地。",
+    planLabel: (plan) => `套餐: ${plan}`,
+    dueLabel: (date) => `续费日: ${date}`,
+    refreshAll: "全部刷新",
+    keyValid: "API Key 有效",
+    addMonitor: "添加监控",
+  },
+  app: {
+    trayNext: (plan, date) => `下一续费：${plan} · ${date}`,
+    trayNextNone: "下一续费：—",
+    loadFailed: "加载数据失败",
+    loadFailedHint: "数据加载失败，请重启应用或检查数据文件。",
+    retry: "重试",
+    loading: "加载中…",
+    remindersOnTitle: "续费提醒已开",
+    remindersOffTitle: "续费提醒已关",
+    remindersTurnOff: "关闭续费提醒",
+    remindersTurnOn: "开启续费提醒",
+    pagesNav: "页面",
+    fallbackPlan: "订阅",
+    addedFromCatalog: "已从服务库添加",
+    langSwitched: "语言：简体中文",
   },
   duePicker: {
     title: "设置续费日",
@@ -325,6 +471,17 @@ const zh: Dict = {
     monthSpend: "本月支出",
     feeRef: "月费参考",
     last6Months: "近 6 个月支出",
+    noData: "暂无数据",
+    billCount: (n) => `${n} 笔`,
+  },
+  reminders: {
+    noneWithin3Days: "当前没有 3 天内需要续费的已订阅套餐。",
+    item: (plan, due, left) => `${plan}（${due}，剩 ${left} 天）`,
+    prefix: "续费提醒：",
+    notificationTitle: "订阅续费提醒",
+    permissionDenied: "未授权通知，仍可在应用内看到提醒。",
+    turnedOn: "已开启续费提醒。打开应用时会检查 3 天内续费。",
+    turnedOff: "已关闭续费提醒。",
   },
   pending: {
     meta: (date, left, fee) => `${date} · 剩余 ${left} 天 · ${fee}`,
@@ -365,6 +522,7 @@ const zh: Dict = {
 
 const en: Dict = {
   brand: "Subscription Ledger",
+  common: { close: "Close" },
   nav: { subs: "Overview", stats: "Stats", expired: "Expired", bills: "Bills", pending: "Renewals" },
   toolbar: { add: "Add", addBill: "Add bill", catalog: "Catalog", theme: "Theme", settings: "Settings" },
   dashboard: {
@@ -406,6 +564,10 @@ const en: Dict = {
     security: "Security",
     securityNote1: "All data is encrypted with AES-256-GCM and stored locally.",
     securityNote2: "If the device is lost and the OS password is known, root or physical access may still expose the data.",
+    monitorTitle: "Automatic monitoring",
+    monitorDesc: "Query subscription status automatically via API key.",
+    monitorConfigured: (n) => (n === 1 ? "1 monitor configured" : `${n} monitors configured`),
+    monitorManage: "Manage",
   },
   form: {
     addTitle: "Add subscription",
@@ -441,10 +603,6 @@ const en: Dict = {
     saving: "Saving…",
     matched: (plan) => `Matched “${plan}” — submitting will add a bill to it`,
     feeError: "Invalid amount",
-    catOfficial: "Official",
-    catRelay: "Relay",
-    catCredit: "Credits",
-    catOther: "Other",
     categoryRequired: "Pick a category",
     planRequired: "Enter a plan name",
     subDateInvalid: "Invalid subscription date",
@@ -482,8 +640,75 @@ const en: Dict = {
     catOfficial: "Official",
     catRelay: "Relay",
     catCredit: "Credits",
+    catOther: "Other",
     unrenewedPrompt: (plan) =>
       `${plan} was not renewed. Delete the entry, or mark it unsubscribed?\nOK = delete, Cancel = mark unsubscribed`,
+    confirmDeleteRow: "Delete this row?",
+    renewedNotice: (plan, due) => `${plan} renewed — next due ${due}`,
+    deletedNotice: (plan) => `${plan} deleted.`,
+    unsubscribedNotice: (plan) => `${plan} marked unsubscribed.`,
+  },
+  catalog: {
+    title: "Catalog",
+    searchPlaceholder: "Search ChatGPT, Cursor, relays…",
+    hint: "Services with automatic bill capture come first (paste JSON / order text). Everyday shopping and bank statements are out of scope.",
+    empty: "No matching service — use “Add subscription” to create your own.",
+    segAll: "All",
+    segRelay: "Relay",
+    segCredit: "Credits",
+    segDev: "Dev",
+    segDesign: "Design",
+    segMedia: "Media",
+    segOffice: "Office",
+    segCloud: "Cloud",
+    badgePaste: "Paste to bill",
+    badgeEmail: "Email (planned)",
+    badgeOauth: "Auto-monitored",
+    feeHint: (fee) => `approx ¥${fee}`,
+    addToWishlist: "Add to wishlist",
+    alreadySubscribed: "Subscribed",
+  },
+  monitor: {
+    title: "Automatic monitoring",
+    service: "Service",
+    statusActive: "Active",
+    statusExpired: "Expired",
+    statusError: "Error",
+    statusUnknown: "Not checked",
+    statusOther: "Unknown",
+    lastChecked: (when) => `Last checked: ${when}`,
+    notChecked: "Not checked yet",
+    checking: "Checking…",
+    refresh: "Refresh",
+    remove: "Remove",
+    verifyFailed: (msg) => `Verification failed: ${msg}`,
+    verifyOk: (detail) => `Verified — ${detail}`,
+    cancel: "Cancel",
+    testing: "Verifying…",
+    testConnection: "Test connection",
+    add: "Add",
+    desc: "Enter an API key to query subscription status automatically. The key is encrypted along with your data and stays on this device.",
+    planLabel: (plan) => `Plan: ${plan}`,
+    dueLabel: (date) => `Renews: ${date}`,
+    refreshAll: "Refresh all",
+    keyValid: "API key is valid",
+    addMonitor: "Add a monitor",
+  },
+  app: {
+    trayNext: (plan, date) => `Next renewal: ${plan} · ${date}`,
+    trayNextNone: "Next renewal: —",
+    loadFailed: "Could not load your data",
+    loadFailedHint: "Loading failed. Restart the app or check the data file.",
+    retry: "Retry",
+    loading: "Loading…",
+    remindersOnTitle: "Renewal reminders are on",
+    remindersOffTitle: "Renewal reminders are off",
+    remindersTurnOff: "Turn off renewal reminders",
+    remindersTurnOn: "Turn on renewal reminders",
+    pagesNav: "Pages",
+    fallbackPlan: "subscription",
+    addedFromCatalog: "Added from the catalog",
+    langSwitched: "Language: English",
   },
   duePicker: {
     title: "Set renewal date",
@@ -503,6 +728,17 @@ const en: Dict = {
     monthSpend: "This month",
     feeRef: "Monthly fee",
     last6Months: "Last 6 months",
+    noData: "No data yet",
+    billCount: (n) => (n === 1 ? "1 bill" : `${n} bills`),
+  },
+  reminders: {
+    noneWithin3Days: "Nothing due for renewal within 3 days.",
+    item: (plan, due, left) => `${plan} (${due}, ${left === 1 ? "1 day" : `${left} days`} left)`,
+    prefix: "Renewal reminder: ",
+    notificationTitle: "Subscription renewal reminder",
+    permissionDenied: "Notifications are not allowed; in-app reminders still work.",
+    turnedOn: "Renewal reminders on. The app checks for renewals due within 3 days on launch.",
+    turnedOff: "Renewal reminders off.",
   },
   pending: {
     meta: (date, left, fee) =>

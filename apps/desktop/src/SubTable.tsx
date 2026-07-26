@@ -7,6 +7,7 @@ import {
   type AppState,
   type SubscriptionRow,
 } from "@ai-sub/core";
+import { categoryLabel } from "./categoryLabel";
 import { resolveLang, tFor, type Dict } from "./i18n";
 
 const ReadCell = memo(function ReadCell({
@@ -45,22 +46,17 @@ type SubTableRowProps = {
   t: Dict["table"];
 };
 
-/**
- * category 是用户数据，不是界面标签：已知的三类给出本地化展示名，
- * 自定义分类原样显示，避免把用户填的内容改掉。
- */
-const getCategoryStyle = (category: string, t: Dict["table"]): { class: string; label: string } => {
-  switch (category) {
-    case "官方":
-      return { class: "category-tag--official", label: t.catOfficial };
-    case "中转":
-      return { class: "category-tag--relay", label: t.catRelay };
-    case "中转额度包":
-      return { class: "category-tag--credit", label: t.catCredit };
-    default:
-      return { class: "category-tag--other", label: category };
-  }
+/** 配色按分类分档；展示文案统一走 categoryLabel（见该文件注释）。 */
+const CATEGORY_CLASS: Record<string, string> = {
+  官方: "category-tag--official",
+  中转: "category-tag--relay",
+  中转额度包: "category-tag--credit",
 };
+
+const getCategoryStyle = (category: string, t: Dict["table"]): { class: string; label: string } => ({
+  class: CATEGORY_CLASS[category] ?? "category-tag--other",
+  label: categoryLabel(category, t),
+});
 
 const SubTableRow = memo(function SubTableRow({ row, index, handlers, t }: SubTableRowProps) {
   const {

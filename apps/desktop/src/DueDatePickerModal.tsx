@@ -34,7 +34,7 @@ export function DueDatePickerModal({
       <div className="modal__panel" style={{ maxWidth: 400 }}>
         <div className="modal__head">
           <h2 className="modal__title">{t.title}</h2>
-          <ModalCloseButton onClick={onCancel} />
+          <ModalCloseButton onClick={onCancel} label={tFor(resolveLang(language)).common.close} />
         </div>
         <form
           className="modal__body"

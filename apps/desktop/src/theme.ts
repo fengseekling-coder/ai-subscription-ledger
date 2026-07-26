@@ -21,7 +21,6 @@ interface AccentVars {
 }
 
 interface AccentPreset {
-  label: string;
   light: AccentVars;
   dark: AccentVars;
 }
@@ -37,32 +36,26 @@ export const ACCENT_ORDER: AccentKey[] = [
 
 export const ACCENTS: Record<AccentKey, AccentPreset> = {
   green: {
-    label: "绿",
     light: { accent: "#0f7b3f", hover: "#0b6534", on: "#ffffff", soft: "rgba(15,123,63,0.09)", muted: "#e2efe7", ink: "#0b5c30" },
     dark: { accent: "#3fbf74", hover: "#55cc86", on: "#06281a", soft: "rgba(63,191,116,0.14)", muted: "#183727", ink: "#7fd6a4" },
   },
   blue: {
-    label: "蓝",
     light: { accent: "#2563eb", hover: "#1d4ed8", on: "#ffffff", soft: "rgba(37,99,235,0.10)", muted: "#e6edfb", ink: "#1e40af" },
     dark: { accent: "#5b8def", hover: "#7aa3f2", on: "#0b1c3a", soft: "rgba(91,141,239,0.16)", muted: "#16213a", ink: "#9bb8f5" },
   },
   indigo: {
-    label: "靛",
     light: { accent: "#4f46e5", hover: "#4338ca", on: "#ffffff", soft: "rgba(79,70,229,0.10)", muted: "#e8e7fb", ink: "#3730a3" },
     dark: { accent: "#7c79ec", hover: "#9b98f2", on: "#15123a", soft: "rgba(124,121,236,0.16)", muted: "#1c1a3a", ink: "#aaa6f5" },
   },
   teal: {
-    label: "青",
     light: { accent: "#0d9488", hover: "#0f766e", on: "#ffffff", soft: "rgba(13,148,136,0.10)", muted: "#e2f4f2", ink: "#0f766e" },
     dark: { accent: "#2dd4bf", hover: "#4ddbc8", on: "#06231f", soft: "rgba(45,212,191,0.15)", muted: "#102a27", ink: "#7fe9dc" },
   },
   violet: {
-    label: "紫",
     light: { accent: "#7c3aed", hover: "#6d28d9", on: "#ffffff", soft: "rgba(124,58,237,0.10)", muted: "#efe7fb", ink: "#5b21b6" },
     dark: { accent: "#a78bfa", hover: "#bfa3fb", on: "#1f123a", soft: "rgba(167,139,250,0.16)", muted: "#231a3a", ink: "#c4b1fb" },
   },
   slate: {
-    label: "灰",
     light: { accent: "#3a3a3c", hover: "#2a2a2c", on: "#ffffff", soft: "rgba(60,60,67,0.10)", muted: "#e8e8ea", ink: "#3a3a3c" },
     dark: { accent: "#c7c7cc", hover: "#d8d8dc", on: "#1c1c1e", soft: "rgba(199,199,204,0.14)", muted: "#2a2a2c", ink: "#e3e3e8" },
   },

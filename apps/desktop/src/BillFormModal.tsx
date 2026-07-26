@@ -70,7 +70,7 @@ export function BillFormModal({ mode, billId, draft, state, onClose, onCommit, o
       <div className="modal__panel" style={{ maxWidth: 460 }}>
         <div className="modal__head">
           <h2 className="modal__title">{mode === "edit" ? t.formEditTitle : t.formAddTitle}</h2>
-          <ModalCloseButton onClick={onClose} />
+          <ModalCloseButton onClick={onClose} label={tFor(resolveLang(language)).common.close} />
         </div>
         <form
           className="modal__body"

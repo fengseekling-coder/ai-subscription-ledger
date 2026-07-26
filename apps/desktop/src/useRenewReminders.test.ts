@@ -13,7 +13,12 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
   requestPermission: () => requestPermission(),
 }));
 
-/** 带一个 2 天后到期的订阅 —— 落在 3 天提醒窗口内。 */
+/**
+ * 带一个 2 天后到期的订阅 —— 落在 3 天提醒窗口内。
+ *
+ * 显式钉住 language：提醒文案现在走字典，而 jsdom 的 navigator.language 是英文，
+ * 不指定就会解析成 en，用例断言中文会莫名失败。
+ */
 function stateWithPending(overrides: Partial<AppState> = {}): AppState {
   const due = new Date();
   due.setDate(due.getDate() + 2);
@@ -36,6 +41,7 @@ function stateWithPending(overrides: Partial<AppState> = {}): AppState {
       ],
       bills: [],
     }),
+    language: "zh-CN",
     ...overrides,
   };
 }
@@ -60,6 +66,17 @@ describe("useRenewReminders", () => {
     await settle();
     expect(sendNotification).toHaveBeenCalledTimes(1);
     expect(sendNotification.mock.calls[0][0]).toMatchObject({ title: "订阅续费提醒" });
+  });
+
+  it("通知与提示按账本的语言设置输出", async () => {
+    const showNotice = vi.fn();
+    renderHook(() =>
+      useRenewReminders(stateWithPending({ language: "en" }), true, showNotice)
+    );
+    await settle();
+    expect(sendNotification.mock.calls[0][0]).toMatchObject({
+      title: "Subscription renewal reminder",
+    });
   });
 
   it("state 从 null 变为账本时才检查，null 阶段不推送", async () => {
