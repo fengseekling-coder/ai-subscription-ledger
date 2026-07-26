@@ -8,6 +8,7 @@ import {
   type SubscriptionRow,
 } from "@ai-sub/core";
 import { confirmUnrenewedOrDelete } from "./SubTable";
+import { resolveLang, tFor } from "./i18n";
 
 type PendingItem = { row: SubscriptionRow; index: number; left: number | null };
 
@@ -19,6 +20,7 @@ type Props = {
 };
 
 export function PendingView({ state, pending, onCommit, showNotice }: Props) {
+  const t = tFor(resolveLang(state.language)).pending;
   return (
     <section className="section">
       <div className="table-card renew-list">
@@ -27,7 +29,7 @@ export function PendingView({ state, pending, onCommit, showNotice }: Props) {
             <div>
               <div className="renew-item__plan">{row.plan}</div>
               <div className="renew-item__meta">
-                {row.dueDate} · 剩余 {left} 天 · {fmtMoney(moneyValue(row.fee))}
+                {t.meta(row.dueDate, left ?? 0, fmtMoney(moneyValue(row.fee)))}
               </div>
             </div>
             <div className="due-row-actions" style={{ display: "inline-flex" }}>
@@ -40,10 +42,10 @@ export function PendingView({ state, pending, onCommit, showNotice }: Props) {
                     return;
                   }
                   onCommit(result);
-                  showNotice(`${row.plan} 已续费`);
+                  showNotice(t.renewedNotice(row.plan));
                 }}
               >
-                已续费
+                {t.renewed}
               </button>
               <button
                 type="button"
@@ -65,11 +67,12 @@ export function PendingView({ state, pending, onCommit, showNotice }: Props) {
                         return;
                       }
                       onCommit(result);
-                    }
+                    },
+                    state.language
                   )
                 }
               >
-                未续费
+                {t.notRenewed}
               </button>
             </div>
           </div>

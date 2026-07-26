@@ -65,7 +65,8 @@ export function buildSubTableHandlers(
           }
           commit(result);
           showNotice(`${row.plan} 已改为未订阅。`);
-        }
+        },
+        state.language
       );
     },
     onMarkExpired: (i) => {

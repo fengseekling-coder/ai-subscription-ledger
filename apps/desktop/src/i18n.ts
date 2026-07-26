@@ -24,6 +24,12 @@ export type Dict = {
     overdue: string;
     daysLeft: (n: number) => string;
     due: (d: string) => string;
+    summaryLabel: string;
+    budgetInputAria: string;
+    monitor: string;
+    monitorErrors: (n: number) => string;
+    monitorConnected: (n: number, errors: number) => string;
+    monitorNotChecked: string;
   };
   empty: { title: string; desc: string; add: string; fromCatalog: string };
   notice: { copied: string; failed: string; deleted: string; saved: string };
@@ -95,6 +101,59 @@ export type Dict = {
     renewed: string;
     cancel: string;
     delete: string;
+    actions: string;
+    subscribeTitle: string;
+    dueToday: string;
+    overdueDays: (n: number) => string;
+    daysLeft: (n: number) => string;
+    /** 已知分类的展示名；自定义分类原样显示 */
+    catOfficial: string;
+    catRelay: string;
+    catCredit: string;
+    unrenewedPrompt: (plan: string) => string;
+  };
+  stats: {
+    byCategory: string;
+    category: string;
+    active: string;
+    monthSpend: string;
+    feeRef: string;
+    last6Months: string;
+  };
+  pending: {
+    meta: (date: string, left: number, fee: string) => string;
+    renewed: string;
+    renewedNotice: (plan: string) => string;
+    notRenewed: string;
+  };
+  bills: {
+    date: string;
+    linkedSub: string;
+    amount: string;
+    orderId: string;
+    note: string;
+    deletedSub: string;
+    renewalTag: string;
+    edit: string;
+    editTitle: (plan: string) => string;
+    delete: string;
+    confirmDelete: string;
+    deleted: string;
+    empty: string;
+    formAddTitle: string;
+    formEditTitle: string;
+    fieldSub: string;
+    fieldAmount: string;
+    fieldPaidAt: string;
+    fieldOrderId: string;
+    fieldNote: string;
+    optional: string;
+    amountPlaceholder: string;
+    cancel: string;
+    add: string;
+    save: string;
+    added: string;
+    saved: string;
   };
 };
 
@@ -115,6 +174,13 @@ const zh: Dict = {
     overdue: "已过期",
     daysLeft: (n) => `剩余 ${n} 天`,
     due: (d) => d,
+    summaryLabel: "本月摘要",
+    budgetInputAria: "月预算",
+    monitor: "监控",
+    monitorErrors: (n) => `${n} 个异常`,
+    monitorConnected: (n, errors) =>
+      errors > 0 ? `${n} 个服务已连接，${errors} 个异常` : `${n} 个服务已连接`,
+    monitorNotChecked: "尚未检查",
   },
   empty: { title: "暂无订阅", desc: "点右上角新增，或从服务库添加", add: "新增订阅", fromCatalog: "从服务库添加" },
   notice: { copied: "已复制", failed: "操作失败", deleted: "已删除", saved: "已保存" },
@@ -186,6 +252,59 @@ const zh: Dict = {
     renewed: "已续费",
     cancel: "取消",
     delete: "删除",
+    actions: "操作",
+    subscribeTitle: "标记为已订阅",
+    dueToday: "今天到期",
+    overdueDays: (n) => `已过期 ${n} 天`,
+    daysLeft: (n) => `剩余 ${n} 天`,
+    catOfficial: "官方",
+    catRelay: "中转",
+    catCredit: "额度",
+    unrenewedPrompt: (plan) =>
+      `${plan} 未续费：删除条目，还是改为未订阅？\n确定 = 删除，取消 = 改为未订阅`,
+  },
+  stats: {
+    byCategory: "按分类（本月支出）",
+    category: "分类",
+    active: "有效",
+    monthSpend: "本月支出",
+    feeRef: "月费参考",
+    last6Months: "近 6 个月支出",
+  },
+  pending: {
+    meta: (date, left, fee) => `${date} · 剩余 ${left} 天 · ${fee}`,
+    renewed: "已续费",
+    renewedNotice: (plan) => `${plan} 已续费`,
+    notRenewed: "未续费",
+  },
+  bills: {
+    date: "日期",
+    linkedSub: "关联订阅",
+    amount: "金额",
+    orderId: "订单号",
+    note: "备注",
+    deletedSub: "（已删除订阅）",
+    renewalTag: "续费",
+    edit: "改",
+    editTitle: (plan) => `编辑「${plan}」这笔账单`,
+    delete: "删",
+    confirmDelete: "确定删除这笔账单？",
+    deleted: "账单已删除",
+    empty: "暂无账单",
+    formAddTitle: "记一笔账单",
+    formEditTitle: "编辑账单",
+    fieldSub: "关联订阅",
+    fieldAmount: "金额（¥）",
+    fieldPaidAt: "付款日期",
+    fieldOrderId: "订单号",
+    fieldNote: "备注",
+    optional: "可选",
+    amountPlaceholder: "例如 144",
+    cancel: "取消",
+    add: "添加",
+    save: "保存",
+    added: "已添加账单",
+    saved: "账单已保存",
   },
 };
 
@@ -204,8 +323,15 @@ const en: Dict = {
     budgetUnit: "CNY",
     noRenew: "—",
     overdue: "Overdue",
-    daysLeft: (n) => `${n} days left`,
+    daysLeft: (n) => (n === 1 ? "1 day left" : `${n} days left`),
     due: (d) => d,
+    summaryLabel: "Monthly summary",
+    budgetInputAria: "Monthly budget",
+    monitor: "Monitors",
+    monitorErrors: (n) => `${n} failing`,
+    monitorConnected: (n, errors) =>
+      errors > 0 ? `${n} connected, ${errors} failing` : `${n} connected`,
+    monitorNotChecked: "Not checked yet",
   },
   empty: { title: "No subscriptions yet", desc: "Add from the toolbar, or pick from the catalog", add: "Add subscription", fromCatalog: "From catalog" },
   notice: { copied: "Copied", failed: "Failed", deleted: "Deleted", saved: "Saved" },
@@ -277,6 +403,60 @@ const en: Dict = {
     renewed: "Renewed",
     cancel: "Cancel",
     delete: "Delete",
+    actions: "Actions",
+    subscribeTitle: "Mark as subscribed",
+    dueToday: "Due today",
+    overdueDays: (n) => (n === 1 ? "1 day overdue" : `${n} days overdue`),
+    daysLeft: (n) => (n === 1 ? "1 day left" : `${n} days left`),
+    catOfficial: "Official",
+    catRelay: "Relay",
+    catCredit: "Credits",
+    unrenewedPrompt: (plan) =>
+      `${plan} was not renewed. Delete the entry, or mark it unsubscribed?\nOK = delete, Cancel = mark unsubscribed`,
+  },
+  stats: {
+    byCategory: "By category (this month)",
+    category: "Category",
+    active: "Active",
+    monthSpend: "This month",
+    feeRef: "Monthly fee",
+    last6Months: "Last 6 months",
+  },
+  pending: {
+    meta: (date, left, fee) =>
+      `${date} · ${left === 1 ? "1 day left" : `${left} days left`} · ${fee}`,
+    renewed: "Renewed",
+    renewedNotice: (plan) => `${plan} renewed`,
+    notRenewed: "Not renewed",
+  },
+  bills: {
+    date: "Date",
+    linkedSub: "Subscription",
+    amount: "Amount",
+    orderId: "Order ID",
+    note: "Note",
+    deletedSub: "(deleted subscription)",
+    renewalTag: "Renewal",
+    edit: "Edit",
+    editTitle: (plan) => `Edit the ${plan} bill`,
+    delete: "Delete",
+    confirmDelete: "Delete this bill?",
+    deleted: "Bill deleted",
+    empty: "No bills yet",
+    formAddTitle: "Add a bill",
+    formEditTitle: "Edit bill",
+    fieldSub: "Subscription",
+    fieldAmount: "Amount (CNY)",
+    fieldPaidAt: "Paid on",
+    fieldOrderId: "Order ID",
+    fieldNote: "Note",
+    optional: "Optional",
+    amountPlaceholder: "e.g. 144",
+    cancel: "Cancel",
+    add: "Add",
+    save: "Save",
+    added: "Bill added",
+    saved: "Bill saved",
   },
 };
 

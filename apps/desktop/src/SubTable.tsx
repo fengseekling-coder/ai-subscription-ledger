@@ -1,10 +1,13 @@
 import { memo, useCallback, useMemo } from "react";
 import {
+  daysUntil,
   dueMeta,
   feeDisplayParts,
   isCreditLike,
+  type AppState,
   type SubscriptionRow,
 } from "@ai-sub/core";
+import { resolveLang, tFor, type Dict } from "./i18n";
 
 const ReadCell = memo(function ReadCell({
   value,
@@ -39,22 +42,27 @@ type SubTableRowProps = {
   row: SubscriptionRow;
   index: number;
   handlers: SubTableHandlers;
+  t: Dict["table"];
 };
 
-const getCategoryStyle = (category: string): { class: string; label: string } => {
+/**
+ * category 是用户数据，不是界面标签：已知的三类给出本地化展示名，
+ * 自定义分类原样显示，避免把用户填的内容改掉。
+ */
+const getCategoryStyle = (category: string, t: Dict["table"]): { class: string; label: string } => {
   switch (category) {
     case "官方":
-      return { class: "category-tag--official", label: "官方" };
+      return { class: "category-tag--official", label: t.catOfficial };
     case "中转":
-      return { class: "category-tag--relay", label: "中转" };
+      return { class: "category-tag--relay", label: t.catRelay };
     case "中转额度包":
-      return { class: "category-tag--credit", label: "额度" };
+      return { class: "category-tag--credit", label: t.catCredit };
     default:
       return { class: "category-tag--other", label: category };
   }
 };
 
-const SubTableRow = memo(function SubTableRow({ row, index, handlers }: SubTableRowProps) {
+const SubTableRow = memo(function SubTableRow({ row, index, handlers, t }: SubTableRowProps) {
   const {
     onToggle,
     onEdit,
@@ -66,9 +74,18 @@ const SubTableRow = memo(function SubTableRow({ row, index, handlers }: SubTable
     onDelete,
   } = handlers;
 
+  // dueMeta 只取 cls（结构化的配色档位）；文案改由字典按剩余天数拼，
+  // 这样不必让 core 返回本地化字符串。
   const due = useMemo(() => dueMeta(row.dueDate), [row.dueDate]);
+  const dueLabel = useMemo(() => {
+    const left = daysUntil(row.dueDate);
+    if (left === null) return due.label;
+    if (left < 0) return t.overdueDays(Math.abs(left));
+    if (left === 0) return t.dueToday;
+    return t.daysLeft(left);
+  }, [row.dueDate, due.label, t]);
   const feeParts = useMemo(() => feeDisplayParts(row.fee), [row.fee]);
-  const categoryStyle = getCategoryStyle(row.category);
+  const categoryStyle = getCategoryStyle(row.category, t);
 
   const handleToggle = useCallback(() => onToggle(index), [onToggle, index]);
   const handleEdit = useCallback(() => onEdit(index), [onEdit, index]);
@@ -113,45 +130,45 @@ const SubTableRow = memo(function SubTableRow({ row, index, handlers }: SubTable
             type="button"
             className="btn btn--sm btn--ghost"
             onClick={handleToggle}
-            title="标记为已订阅"
+            title={t.subscribeTitle}
           >
-            订阅
+            {t.subscribe}
           </button>
         ) : row.expired && !row.dueDate ? (
           <div className="due-actions">
-            <span className={`due-badge ${dueBadgeClass}`}>已过期</span>
+            <span className={`due-badge ${dueBadgeClass}`}>{t.expired}</span>
             <div className="due-actions__btns">
               <button type="button" className="btn btn--sm" onClick={handleClearExpired}>
-                恢复
+                {t.restore}
               </button>
               <button type="button" className="btn btn--sm btn--danger" onClick={handleDelete}>
-                删除
+                {t.delete}
               </button>
             </div>
           </div>
         ) : isCreditLike(row) ? (
-          <span className="text-tertiary">非周期</span>
+          <span className="text-tertiary">{t.nonCycle}</span>
         ) : !row.dueDate ? (
           <div className="due-actions">
             <button type="button" className="btn btn--sm btn--ghost" onClick={handlePickDue}>
-              设置日期
+              {t.setDate}
             </button>
             <button type="button" className="btn btn--sm btn--ghost" onClick={handleMarkExpired}>
-              过期
+              {t.expired}
             </button>
           </div>
         ) : (
           <div className="due-actions">
             <span className={`due-badge ${dueBadgeClass}`} title={row.dueDate}>
-              {due.label}
+              {dueLabel}
             </span>
             {due.cls === "overdue" && (
               <div className="due-actions__btns">
                 <button type="button" className="btn btn--sm" onClick={handleRenew}>
-                  已续费
+                  {t.renewed}
                 </button>
                 <button type="button" className="btn btn--sm btn--ghost" onClick={handleMarkUnrenewed}>
-                  取消
+                  {t.cancel}
                 </button>
               </div>
             )}
@@ -161,7 +178,7 @@ const SubTableRow = memo(function SubTableRow({ row, index, handlers }: SubTable
 
       <td className="cell-actions">
         <button type="button" className="btn btn--sm btn--ghost cell-actions__btn" onClick={handleEdit}>
-          编辑
+          {t.edit}
         </button>
       </td>
     </tr>
@@ -170,10 +187,14 @@ const SubTableRow = memo(function SubTableRow({ row, index, handlers }: SubTable
 
 export const SubTable = memo(function SubTable({
   entries,
+  language,
   ...handlers
 }: {
   entries: { row: SubscriptionRow; index: number }[];
+  language: AppState["language"];
 } & SubTableHandlers) {
+  const t = tFor(resolveLang(language)).table;
+  const empty = tFor(resolveLang(language)).empty;
   const {
     onToggle,
     onEdit,
@@ -202,8 +223,8 @@ export const SubTable = memo(function SubTable({
   if (entries.length === 0) {
     return (
       <div className="empty-state">
-        <div className="empty-state__title">暂无订阅</div>
-        <div className="empty-state__desc">点右上角新增，或从服务库添加</div>
+        <div className="empty-state__title">{empty.title}</div>
+        <div className="empty-state__desc">{empty.desc}</div>
       </div>
     );
   }
@@ -213,17 +234,17 @@ export const SubTable = memo(function SubTable({
       <table>
         <thead>
           <tr className="list-header">
-            <th className="list-header__cell">分类</th>
-            <th className="list-header__cell">套餐</th>
-            <th className="list-header__cell">金额</th>
-            <th className="list-header__cell">备注</th>
-            <th className="list-header__cell">剩余</th>
-            <th className="list-header__cell" aria-label="操作" />
+            <th className="list-header__cell">{t.category}</th>
+            <th className="list-header__cell">{t.plan}</th>
+            <th className="list-header__cell">{t.fee}</th>
+            <th className="list-header__cell">{t.note}</th>
+            <th className="list-header__cell">{t.remain}</th>
+            <th className="list-header__cell" aria-label={t.actions} />
           </tr>
         </thead>
         <tbody>
           {entries.map(({ row, index }) => (
-            <SubTableRow key={row.id} row={row} index={index} handlers={stableHandlers} />
+            <SubTableRow key={row.id} row={row} index={index} handlers={stableHandlers} t={t} />
           ))}
         </tbody>
       </table>
@@ -234,13 +255,10 @@ export const SubTable = memo(function SubTable({
 export function confirmUnrenewedOrDelete(
   plan: string,
   onDelete: () => void,
-  onUnsubscribe: () => void
+  onUnsubscribe: () => void,
+  language?: AppState["language"]
 ) {
-  if (
-    confirm(
-      `${plan} 未续费：删除条目，还是改为未订阅？\n确定 = 删除，取消 = 改为未订阅`
-    )
-  ) {
+  if (confirm(tFor(resolveLang(language)).table.unrenewedPrompt(plan))) {
     onDelete();
   } else {
     onUnsubscribe();

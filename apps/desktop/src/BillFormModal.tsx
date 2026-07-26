@@ -7,6 +7,7 @@ import {
 } from "@ai-sub/core";
 import { useEffect, useMemo, useState } from "react";
 import { CalendarPicker } from "./CalendarPicker";
+import { resolveLang, tFor } from "./i18n";
 import { ModalCloseButton } from "./ui/Icon";
 
 type Props = {
@@ -18,9 +19,11 @@ type Props = {
   onClose: () => void;
   onCommit: (next: AppState) => void;
   onNotice: (text: string, danger?: boolean) => void;
+  language: AppState["language"];
 };
 
-export function BillFormModal({ mode, billId, draft, state, onClose, onCommit, onNotice }: Props) {
+export function BillFormModal({ mode, billId, draft, state, onClose, onCommit, onNotice, language }: Props) {
+  const t = tFor(resolveLang(language)).bills;
   const [subscriptionId, setSubscriptionId] = useState(draft.subscriptionId);
   const [amount, setAmount] = useState(draft.amount);
   const [paidAt, setPaidAt] = useState(draft.paidAt);
@@ -57,7 +60,7 @@ export function BillFormModal({ mode, billId, draft, state, onClose, onCommit, o
       return;
     }
     onCommit(result);
-    onNotice(mode === "edit" ? "账单已保存" : "已添加账单");
+    onNotice(mode === "edit" ? t.saved : t.added);
     onClose();
   };
 
@@ -66,7 +69,7 @@ export function BillFormModal({ mode, billId, draft, state, onClose, onCommit, o
       <div className="modal__backdrop" onClick={onClose} />
       <div className="modal__panel" style={{ maxWidth: 460 }}>
         <div className="modal__head">
-          <h2 className="modal__title">{mode === "edit" ? "编辑账单" : "记一笔账单"}</h2>
+          <h2 className="modal__title">{mode === "edit" ? t.formEditTitle : t.formAddTitle}</h2>
           <ModalCloseButton onClick={onClose} />
         </div>
         <form
@@ -77,7 +80,7 @@ export function BillFormModal({ mode, billId, draft, state, onClose, onCommit, o
           }}
         >
           <div className="form-field">
-            <label htmlFor="bill-sub">关联订阅</label>
+            <label htmlFor="bill-sub">{t.fieldSub}</label>
             <select
               id="bill-sub"
               className="select"
@@ -97,13 +100,13 @@ export function BillFormModal({ mode, billId, draft, state, onClose, onCommit, o
 
           <div className="form-row" style={{ marginTop: 12 }}>
             <div className="form-field">
-              <label htmlFor="bill-amount">金额（¥）</label>
+              <label htmlFor="bill-amount">{t.fieldAmount}</label>
               <input
                 id="bill-amount"
                 className="input"
                 value={amount}
                 inputMode="decimal"
-                placeholder="例如 144"
+                placeholder={t.amountPlaceholder}
                 onChange={(e) => {
                   setAmount(e.target.value);
                   setError(null);
@@ -111,7 +114,7 @@ export function BillFormModal({ mode, billId, draft, state, onClose, onCommit, o
               />
             </div>
             <div className="form-field form-field--picker">
-              <label>付款日期</label>
+              <label>{t.fieldPaidAt}</label>
               <CalendarPicker
                 value={paidAt}
                 onChange={(iso) => {
@@ -123,23 +126,23 @@ export function BillFormModal({ mode, billId, draft, state, onClose, onCommit, o
           </div>
 
           <div className="form-field" style={{ marginTop: 12 }}>
-            <label htmlFor="bill-order">订单号</label>
+            <label htmlFor="bill-order">{t.fieldOrderId}</label>
             <input
               id="bill-order"
               className="input"
               value={orderId}
-              placeholder="可选"
+              placeholder={t.optional}
               onChange={(e) => setOrderId(e.target.value)}
             />
           </div>
 
           <div className="form-field" style={{ marginTop: 12 }}>
-            <label htmlFor="bill-note">备注</label>
+            <label htmlFor="bill-note">{t.fieldNote}</label>
             <input
               id="bill-note"
               className="input"
               value={note}
-              placeholder="可选"
+              placeholder={t.optional}
               onChange={(e) => setNote(e.target.value)}
             />
           </div>
@@ -152,11 +155,11 @@ export function BillFormModal({ mode, billId, draft, state, onClose, onCommit, o
 
           <div className="modal__foot">
             <button type="button" onClick={onClose}>
-              取消
+              {t.cancel}
             </button>
             <div className="modal__foot-actions">
               <button type="submit" className="primary">
-                {mode === "edit" ? "保存" : "添加"}
+                {mode === "edit" ? t.save : t.add}
               </button>
             </div>
           </div>

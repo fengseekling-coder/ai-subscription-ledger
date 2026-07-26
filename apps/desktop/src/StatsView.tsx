@@ -1,6 +1,8 @@
 import { fmtMoney, spendByCategory, spendByMonth, type AppState } from "@ai-sub/core";
+import { resolveLang, tFor } from "./i18n";
 
 export function StatsView({ state }: { state: AppState }) {
+  const t = tFor(resolveLang(state.language)).stats;
   const byCat = spendByCategory(state);
   const byMonth = spendByMonth(state, 6);
   const maxMonth = Math.max(1, ...byMonth.map((m) => m.total));
@@ -9,14 +11,14 @@ export function StatsView({ state }: { state: AppState }) {
     <section className="section stats-section">
 <div className="stats-grid">
         <div className="table-card">
-          <h4 className="stats-subtitle">按分类（本月支出）</h4>
+          <h4 className="stats-subtitle">{t.byCategory}</h4>
           <table>
             <thead>
               <tr>
-                <th>分类</th>
-                <th>有效</th>
-                <th>本月支出</th>
-                <th>月费参考</th>
+                <th>{t.category}</th>
+                <th>{t.active}</th>
+                <th>{t.monthSpend}</th>
+                <th>{t.feeRef}</th>
               </tr>
             </thead>
             <tbody>
@@ -44,7 +46,7 @@ export function StatsView({ state }: { state: AppState }) {
         </div>
 
         <div className="table-card">
-          <h4 className="stats-subtitle">近 6 个月支出</h4>
+          <h4 className="stats-subtitle">{t.last6Months}</h4>
           <ul className="month-bars">
             {byMonth.map((m) => (
               <li key={m.monthKey} className="month-bars__row">

@@ -532,6 +532,7 @@ export default function App() {
             summary={summary}
             onCommit={commit}
             variant={mode === "subs" ? "full" : "compact"}
+            language={state.language}
           />
         )}
 
@@ -580,7 +581,7 @@ export default function App() {
         {mode === "subs" && subHandlers && (
           <section className="section">
             <div className="table-card">
-              <SubTable entries={subsEntries} {...subHandlers} />
+              <SubTable entries={subsEntries} language={state.language} {...subHandlers} />
             </div>
           </section>
         )}
@@ -588,7 +589,7 @@ export default function App() {
         {mode === "expired" && expiredSubHandlers && (
           <section className="section">
             <div className="table-card">
-              <SubTable entries={expiredEntries} {...expiredSubHandlers} />
+              <SubTable entries={expiredEntries} language={state.language} {...expiredSubHandlers} />
             </div>
           </section>
         )}
@@ -600,6 +601,7 @@ export default function App() {
             onCommit={commit}
             onNotice={showNotice}
             onEdit={openEditBill}
+            language={state.language}
           />
         )}
 
@@ -636,6 +638,7 @@ export default function App() {
           onClose={() => setBillForm(null)}
           onCommit={commit}
           onNotice={showNotice}
+          language={state.language}
         />
       )}
 

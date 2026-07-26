@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { feeDisplayParts, fmtMoney, setBudget, type AppState, type Summary } from "@ai-sub/core";
+import { resolveLang, tFor } from "./i18n";
 
 type Props = {
   state: AppState;
@@ -7,6 +8,7 @@ type Props = {
   onCommit: (next: AppState) => void;
   /** full = 概览页完整看板；compact = 其它页顶部摘要 */
   variant?: "full" | "compact";
+  language: AppState["language"];
 };
 
 export const Dashboard = memo(function Dashboard({
@@ -14,7 +16,9 @@ export const Dashboard = memo(function Dashboard({
   summary,
   onCommit,
   variant = "full",
+  language,
 }: Props) {
+  const t = tFor(resolveLang(language)).dashboard;
   const [editingBudget, setEditingBudget] = useState(false);
   const [draftBudget, setDraftBudget] = useState(String(state.budget));
   const budgetInputRef = useRef<HTMLInputElement>(null);
@@ -48,9 +52,9 @@ export const Dashboard = memo(function Dashboard({
     ? [
         nearestFeeLabel,
         summary.nearestLeft !== null && summary.nearestLeft < 0
-          ? "已过期"
+          ? t.overdue
           : summary.nearestLeft !== null
-            ? `剩余 ${summary.nearestLeft} 天`
+            ? t.daysLeft(summary.nearestLeft)
             : summary.nearestDueDate,
       ]
         .filter(Boolean)
@@ -58,7 +62,7 @@ export const Dashboard = memo(function Dashboard({
     : null;
 
   const hasBudget = Number(state.budget) > 0;
-  const budgetActionLabel = hasBudget ? "编辑预算" : "添加预算";
+  const budgetActionLabel = hasBudget ? t.editBudget : t.addBudget;
 
   const budgetUsedPct = useMemo(() => {
     const budget = Number(state.budget);
@@ -99,14 +103,14 @@ export const Dashboard = memo(function Dashboard({
 
   const budgetEditor = editingBudget ? (
     <div className="metric__budget-edit">
-      <span className="metric__budget-prefix">总预算</span>
+      <span className="metric__budget-prefix">{t.budgetPrefix}</span>
       <input
         ref={budgetInputRef}
         className="metric__budget-field"
         type="text"
         inputMode="decimal"
         value={draftBudget}
-        aria-label="月预算"
+        aria-label={t.budgetInputAria}
         onChange={(e) => setDraftBudget(e.target.value.replace(/[^\d.]/g, ""))}
         onBlur={commitBudgetDraft}
         onKeyDown={(e) => {
@@ -119,12 +123,12 @@ export const Dashboard = memo(function Dashboard({
           }
         }}
       />
-      <span className="metric__budget-unit">元</span>
+      <span className="metric__budget-unit">{t.budgetUnit}</span>
     </div>
   ) : (
     <div className="metric__budget-meta">
       <span className="metric__budget-total">
-        总预算 {fmtMoney(state.budget)}
+        {t.totalBudget(fmtMoney(state.budget))}
       </span>
       <button
         type="button"
@@ -155,10 +159,10 @@ export const Dashboard = memo(function Dashboard({
     const compactErrorCount = compactMonitors.filter((m) => m.status === "error").length;
 
     return (
-      <div className="dashboard dashboard--compact" aria-label="本月摘要">
+      <div className="dashboard dashboard--compact" aria-label={t.summaryLabel}>
         <div className="summary-strip">
           <div className="summary-strip__item">
-            <span className="summary-strip__label">本月支出</span>
+            <span className="summary-strip__label">{t.monthSpend}</span>
             <span className="summary-strip__value">{fmtMoney(summary.monthSpend)}</span>
           </div>
           <div
@@ -167,7 +171,7 @@ export const Dashboard = memo(function Dashboard({
               (editingBudget ? " is-editing" : "")
             }
           >
-            <span className="summary-strip__label">预算剩余</span>
+            <span className="summary-strip__label">{t.budgetLeft}</span>
             <span
               className={
                 "summary-strip__value" +
@@ -179,20 +183,20 @@ export const Dashboard = memo(function Dashboard({
             {budgetEditor}
           </div>
           <div className="summary-strip__item summary-strip__item--grow">
-            <span className="summary-strip__label">下一续费</span>
+            <span className="summary-strip__label">{t.nextRenew}</span>
             <span
               className="summary-strip__value"
               style={nearestValueStyle ? { color: nearestValueStyle } : undefined}
             >
-              {summary.nearestPlan ?? "—"}
+              {summary.nearestPlan ?? t.noRenew}
               {nearestSub && <span className="summary-strip__note">{" · "}{nearestSub}</span>}
             </span>
           </div>
           {compactErrorCount > 0 && (
             <div className="summary-strip__item">
-              <span className="summary-strip__label">监控</span>
+              <span className="summary-strip__label">{t.monitor}</span>
               <span className="summary-strip__value" style={{ color: "var(--danger)" }}>
-                {compactErrorCount} 个异常
+                {t.monitorErrors(compactErrorCount)}
               </span>
             </div>
           )}
@@ -214,20 +218,20 @@ export const Dashboard = memo(function Dashboard({
     <div className="dashboard">
       <section className="metrics">
         <article className="metric">
-          <div className="metric__label">本月支出</div>
+          <div className="metric__label">{t.monthSpend}</div>
           <div className="metric__value">{fmtMoney(summary.monthSpend)}</div>
         </article>
         <article className={"metric metric--budget" + (editingBudget ? " is-editing" : "")}>
-          <div className="metric__label">预算剩余</div>
+          <div className="metric__label">{t.budgetLeft}</div>
           {budgetCardBody}
         </article>
         <article className="metric">
-          <div className="metric__label">下一续费</div>
+          <div className="metric__label">{t.nextRenew}</div>
           <div
             className="metric__value metric__value--sm"
             style={nearestValueStyle ? { color: nearestValueStyle } : undefined}
           >
-            {summary.nearestPlan ?? "—"}
+            {summary.nearestPlan ?? t.noRenew}
           </div>
           {nearestSub && <div className="metric__note">{nearestSub}</div>}
         </article>
@@ -238,8 +242,8 @@ export const Dashboard = memo(function Dashboard({
           <div className={`dashboard-monitor__dot ${monitorDotClass}`} />
           <span className="dashboard-monitor__text">
             {activeMonitors > 0
-              ? `${activeMonitors} 个服务已连接` + (errorMonitors > 0 ? `，${errorMonitors} 个异常` : "")
-              : "尚未检查"}
+              ? t.monitorConnected(activeMonitors, errorMonitors)
+              : t.monitorNotChecked}
           </span>
         </div>
       )}
