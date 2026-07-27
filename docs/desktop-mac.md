@@ -15,7 +15,7 @@
 ~/Library/Application Support/com.azhuilab.subscription-ledger/ledger.db
 ```
 
-首次启动若库为空，**不会**自动塞示例数据，界面会引导你打开 **新增订阅**；表单内可选 AI 套餐预设，也可直接手填。产品说明见 [product.md](./product.md)。
+首次启动若库为空，**不会**自动塞示例数据，界面会引导你打开 **新增订阅**。产品说明见 [product.md](./product.md)。
 
 ## 命令
 
@@ -47,7 +47,6 @@ npm run tauri:build -w @ai-sub/desktop
 - 概览 / 已过期 / 账单 / 待续费（3 天内）
 - 本月支出（账单 `paidAt` 自然月）、月预算
 - 续费推进 `dueDate` + `kind: renewal` 账单
-- 新增订阅表单内的 AI 套餐预填：对话与助手、AI 编程、创作与媒体、模型 API；价格仅作可编辑的参考输入
 - 订单文本 / JSON 粘贴快速填充，以及剪贴板图片 OCR
 - 系统通知（需点击「提醒」授权）
 

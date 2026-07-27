@@ -19,16 +19,14 @@ import { useEffect, useRef, useState } from "react";
 import { CalendarPicker } from "./CalendarPicker";
 import { resolveLang, tFor } from "./i18n";
 import {
-  AI_SUBSCRIPTION_PRESETS,
   BILLING_MODEL_VALUES,
   PURCHASE_CHANNEL_VALUES,
   SUBSCRIPTION_CATEGORY_VALUES,
-  SUBSCRIPTION_PRESET_GROUPS,
   billingModelNeedsDueDate,
   formDefaultsFromCategory,
   type BillingModel,
   type PurchaseChannel,
-} from "./subscriptionPresets";
+} from "./subscriptionFields";
 import { Icon, ModalCloseButton } from "./ui/Icon";
 
 export type SubscriptionFormDraft = {
@@ -423,26 +421,6 @@ export function SubscriptionFormModal({
     }
   };
 
-  const setInputValue = (name: "plan" | "fee", value: string) => {
-    const input = formRef.current?.elements.namedItem(name) as HTMLInputElement | null;
-    if (input) input.value = value;
-  };
-
-  const applyPreset = (presetId: string) => {
-    const preset = AI_SUBSCRIPTION_PRESETS.find((entry) => entry.id === presetId);
-    if (!preset) return;
-    setInputValue("plan", preset.plan);
-    setInputValue("fee", preset.fee);
-    setCategory(preset.category);
-    setPurchaseChannel(preset.purchaseChannel);
-    setBillingModel(preset.billingModel);
-    setFeeError(null);
-    if (!billingModelNeedsDueDate(preset.billingModel)) {
-      setDueDate("");
-      setDateErrors((prev) => ({ ...prev, dueDate: undefined }));
-    }
-  };
-
   const changeBillingModel = (value: BillingModel) => {
     setBillingModel(value);
     if (!billingModelNeedsDueDate(value)) {
@@ -694,32 +672,6 @@ export function SubscriptionFormModal({
 
             <section className="form-section">
               <div className="form-section__title">{ft.form.basic}</div>
-              {isAdd && (
-                <div className="form-field preset-field">
-                  <label htmlFor="sub-preset">{ft.form.preset}</label>
-                  <select
-                    id="sub-preset"
-                    className="select preset-select"
-                    defaultValue=""
-                    onChange={(event) => applyPreset(event.target.value)}
-                  >
-                    <option value="">{ft.form.presetPlaceholder}</option>
-                    {SUBSCRIPTION_PRESET_GROUPS.map((group) => (
-                      <optgroup key={group} label={ft.form.presetGroups[group]}>
-                        {AI_SUBSCRIPTION_PRESETS.filter((preset) => preset.group === group).map(
-                          (preset) => (
-                            <option key={preset.id} value={preset.id}>
-                              {preset.plan}{preset.fee ? ` · ${preset.fee}` : ""}
-                            </option>
-                          )
-                        )}
-                      </optgroup>
-                    ))}
-                  </select>
-                  <span className="form-field__hint">{ft.form.presetHint}</span>
-                </div>
-              )}
-
               <div className="form-field">
                 <label id="sub-category-label">{ft.form.category}</label>
                 <input type="hidden" name="category" value={category} />

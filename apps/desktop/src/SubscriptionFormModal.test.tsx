@@ -92,7 +92,6 @@ describe("标题与副标题", () => {
   it("英文模式下标题与字段标签都翻译", () => {
     setup({ language: "en" });
     expect(screen.getByRole("heading", { name: "Add subscription" })).toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "Chat & assistants" })).toBeInTheDocument();
     expect(screen.getByText("Purpose")).toBeInTheDocument();
     expect(screen.getByLabelText("Purchase channel")).toBeInTheDocument();
     expect(screen.getByLabelText("Billing model")).toBeInTheDocument();
@@ -149,38 +148,6 @@ describe("用途分类、购买渠道与计费方式", () => {
     expect(added.category).toBe("AI 服务");
     expect(added.billingModel).toBe("额度包");
     expect(added.dueDate).toBe("");
-  });
-});
-
-describe("AI 套餐预设", () => {
-  it("选择月付预设会填充套餐、价格和三个独立属性", async () => {
-    const { onCommit } = setup();
-
-    await userEvent.selectOptions(screen.getByLabelText("AI 套餐预设"), "cursor-pro");
-    expect(screen.getByLabelText("套餐 / 额度")).toHaveValue("Cursor Pro");
-    expect(screen.getByLabelText("金额")).toHaveValue("US$20");
-    expect(screen.getByRole("radio", { name: "开发工具" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByLabelText("购买渠道")).toHaveValue("官方");
-    expect(screen.getByLabelText("计费方式")).toHaveValue("月付");
-
-    await userEvent.click(screen.getByRole("button", { name: "添加" }));
-    await waitFor(() => expect(onCommit).toHaveBeenCalled());
-    expect((onCommit.mock.calls[0][0] as AppState).rows.at(-1)).toMatchObject({
-      category: "开发工具",
-      purchaseChannel: "官方",
-      billingModel: "月付",
-      plan: "Cursor Pro",
-      fee: "US$20",
-    });
-  });
-
-  it("选择 API 预设会切为按量计费并移除续费日期", async () => {
-    setup();
-    await userEvent.selectOptions(screen.getByLabelText("AI 套餐预设"), "openai-api");
-    expect(screen.getByLabelText("套餐 / 额度")).toHaveValue("OpenAI API");
-    expect(screen.getByLabelText("金额")).toHaveValue("");
-    expect(screen.getByLabelText("计费方式")).toHaveValue("按量计费");
-    expect(screen.getByText("此计费方式无需续费日期")).toBeInTheDocument();
   });
 });
 

@@ -66,10 +66,6 @@ export type Dict = {
     parseOcr: string;
     parsing: string;
     basic: string;
-    preset: string;
-    presetPlaceholder: string;
-    presetHint: string;
-    presetGroups: Record<"对话与助手" | "AI 编程" | "创作与媒体" | "模型 API", string>;
     category: string;
     categoryOptions: Record<
       | "AI 服务"
@@ -283,7 +279,7 @@ const zh: Dict = {
       errors > 0 ? `${n} 个服务已连接，${errors} 个异常` : `${n} 个服务已连接`,
     monitorNotChecked: "尚未检查",
   },
-  empty: { title: "暂无订阅", desc: "新增一条订阅，套餐预设可在表单内选择", add: "新增订阅" },
+  empty: { title: "暂无订阅", desc: "新增一条订阅开始管理", add: "新增订阅" },
   notice: { copied: "已复制", failed: "操作失败", deleted: "已删除", saved: "已保存" },
   settings: {
     title: "设置",
@@ -317,15 +313,6 @@ const zh: Dict = {
     parseOcr: "粘贴图片 OCR",
     parsing: "识别中…",
     basic: "基本信息",
-    preset: "AI 套餐预设",
-    presetPlaceholder: "选择套餐快速填充（可选）",
-    presetHint: "参考价会随地区、税费与官方调整变化，填写前请核对账单。",
-    presetGroups: {
-      "对话与助手": "对话与助手",
-      "AI 编程": "AI 编程",
-      "创作与媒体": "创作与媒体",
-      "模型 API": "模型 API",
-    },
     category: "用途分类",
     categoryOptions: {
       "AI 服务": "AI 服务",
@@ -547,7 +534,7 @@ const en: Dict = {
       errors > 0 ? `${n} connected, ${errors} failing` : `${n} connected`,
     monitorNotChecked: "Not checked yet",
   },
-  empty: { title: "No subscriptions yet", desc: "Add a subscription and optionally choose a plan preset in the form", add: "Add subscription" },
+  empty: { title: "No subscriptions yet", desc: "Add a subscription to start tracking", add: "Add subscription" },
   notice: { copied: "Copied", failed: "Failed", deleted: "Deleted", saved: "Saved" },
   settings: {
     title: "Settings",
@@ -581,15 +568,6 @@ const en: Dict = {
     parseOcr: "Paste image (OCR)",
     parsing: "Reading…",
     basic: "Basics",
-    preset: "AI plan preset",
-    presetPlaceholder: "Choose a plan to fill fields (optional)",
-    presetHint: "Reference prices vary by region, tax and provider updates. Check your bill before saving.",
-    presetGroups: {
-      "对话与助手": "Chat & assistants",
-      "AI 编程": "AI coding",
-      "创作与媒体": "Creative & media",
-      "模型 API": "Model APIs",
-    },
     category: "Purpose",
     categoryOptions: {
       "AI 服务": "AI services",

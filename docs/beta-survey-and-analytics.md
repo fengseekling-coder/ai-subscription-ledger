@@ -72,7 +72,6 @@
 |------|----------|--------------|
 | `app_open` | 冷启动或壳激活 | `version`, `platform` |
 | `paste_parse` | 解析粘贴文本或 JSON | `source`: order_text \| ledger_json, `row_count`, `bill_count` |
-| `preset_select` | 在新增订阅表单选择套餐预填 | `group`, `billing_model` |
 
 ### 3.2 核心功能
 
