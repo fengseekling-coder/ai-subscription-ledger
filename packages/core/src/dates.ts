@@ -35,16 +35,26 @@ export function addMonths(date: Date, months: number): Date {
   return d;
 }
 
-export function nextMonthlyDueDate(iso: string | undefined, ref = new Date()): string {
+export function nextRecurringDueDate(
+  iso: string | undefined,
+  intervalMonths: number,
+  ref = new Date()
+): string {
   const now = new Date(ref);
   now.setHours(0, 0, 0, 0);
+  const step =
+    Number.isFinite(intervalMonths) && intervalMonths > 0 ? Math.floor(intervalMonths) : 1;
   // Use T12:00:00 to avoid timezone issues when parsing date-only strings
   let due = iso ? new Date(iso + "T12:00:00") : new Date(now);
   if (Number.isNaN(due.getTime())) due = new Date(now);
   do {
-    due = addMonths(due, 1);
+    due = addMonths(due, step);
   } while (due <= now);
   return formatDate(due);
+}
+
+export function nextMonthlyDueDate(iso: string | undefined, ref = new Date()): string {
+  return nextRecurringDueDate(iso, 1, ref);
 }
 
 /**

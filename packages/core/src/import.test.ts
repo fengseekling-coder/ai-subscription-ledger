@@ -122,7 +122,9 @@ describe("normalizeRow", () => {
       fee: "  20  ",
     });
     expect(out.plan).toBe("Test Plan");
-    expect(out.category).toBe("官方");
+    expect(out.category).toBe("AI 服务");
+    expect(out.purchaseChannel).toBe("官方");
+    expect(out.billingModel).toBe("月付");
     expect(out.fee).toBe("20");
   });
 
@@ -136,28 +138,31 @@ describe("normalizeRow", () => {
     expect(out.plan).toBe("ChatGPT Plus 🚀");
   });
 
-  it("handles optional fields", () => {
+  it("uses legacy segment for migration and removes obsolete catalog fields", () => {
     const out = normalizeRow({
       plan: "Test",
       segment: "credit",
       subscribeUrl: "https://example.com",
       portalUrl: "https://portal.example.com",
-    });
-    expect(out.segment).toBe("credit");
-    expect(out.subscribeUrl).toBe("https://example.com");
-    expect(out.portalUrl).toBe("https://portal.example.com");
+    } as any);
+    expect(out.category).toBe("其他");
+    expect(out.purchaseChannel).toBe("中转");
+    expect(out.billingModel).toBe("额度包");
+    expect(out).not.toHaveProperty("segment");
+    expect(out).not.toHaveProperty("subscribeUrl");
+    expect(out).not.toHaveProperty("portalUrl");
   });
 
-  it("clears whitespace-only optional fields", () => {
+  it("removes whitespace-only obsolete catalog fields", () => {
     const out = normalizeRow({
       plan: "Test",
       segment: "   ",
       subscribeUrl: "  ",
       portalUrl: "  ",
     } as any);
-    expect(out.segment).toBeUndefined();
-    expect(out.subscribeUrl).toBeUndefined();
-    expect(out.portalUrl).toBeUndefined();
+    expect(out).not.toHaveProperty("segment");
+    expect(out).not.toHaveProperty("subscribeUrl");
+    expect(out).not.toHaveProperty("portalUrl");
   });
 
   it("handles expired field as boolean", () => {

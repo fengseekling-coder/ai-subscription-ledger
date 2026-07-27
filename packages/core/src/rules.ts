@@ -3,14 +3,7 @@ import { moneyValue } from "./money.js";
 import type { SubscriptionRow } from "./types.js";
 
 export function isCreditLike(row: SubscriptionRow): boolean {
-  if (row.segment === "credit") return true;
-  if (row.segment && row.segment !== "credit") return false;
-  const c = String(row.category || "");
-  const p = String(row.plan || "");
-  if (c.includes("额度包")) return true;
-  if (p.includes("不限时") || p.includes("Credits")) return true;
-  if (p.includes("额度") && !/月卡|月会员|Plus|Pro|Medium|会员/.test(p)) return true;
-  return false;
+  return row.billingModel === "额度包" || row.billingModel === "按量计费";
 }
 
 export function isRecurringFee(row: SubscriptionRow): boolean {
@@ -35,18 +28,27 @@ export function isActiveSubscription(row: SubscriptionRow, ref = new Date()): bo
 
 export function categoryClass(category: string): string {
   const s = String(category || "");
-  if (s.includes("额度")) return "credit";
-  if (s.includes("官方")) return "official";
-  if (s.includes("中转")) return "relay";
+  if (s.includes("AI")) return "ai";
+  if (s.includes("开发")) return "dev";
+  if (s.includes("云服务") || s.includes("VPS") || s.includes("域名") || s.includes("网络")) {
+    return "cloud";
+  }
+  if (s.includes("设计")) return "design";
+  if (s.includes("办公")) return "office";
+  if (s.includes("影音")) return "media";
   return "other";
 }
 
 export function categoryRank(category: string): number {
   const s = String(category || "");
-  if (s.includes("官方")) return 0;
-  if (s.includes("中转") && !s.includes("额度")) return 1;
-  if (s.includes("额度")) return 2;
-  return 3;
+  if (s.includes("AI")) return 0;
+  if (s.includes("开发")) return 1;
+  if (s.includes("云服务") || s.includes("VPS")) return 2;
+  if (s.includes("域名") || s.includes("网络")) return 3;
+  if (s.includes("设计")) return 4;
+  if (s.includes("办公")) return 5;
+  if (s.includes("影音")) return 6;
+  return 7;
 }
 
 export function rowSortKey(row: SubscriptionRow, ref = new Date()) {
@@ -70,46 +72,4 @@ export function sortRowEntries<T extends { row: SubscriptionRow }>(entries: T[],
     if (cat !== 0) return cat;
     return String(a.row.plan).localeCompare(String(b.row.plan), "zh-CN");
   });
-}
-
-export function statusDisplayClass(row: SubscriptionRow, ref = new Date()): string {
-  if (!row.subscribed) return "";
-  if (isRowExpired(row, ref)) return "expired";
-  if (isCreditLike(row) || !row.dueDate) return "neutral";
-  const left = daysUntil(row.dueDate, ref);
-  if (left === null) return "neutral";
-  if (left < 0) return "urgent";
-  if (left <= 3) return "soon";
-  return "safe";
-}
-
-export function statusTitle(row: SubscriptionRow, ref = new Date()): string {
-  if (!row.subscribed) return "未订阅，点击标记为已订阅";
-  if (isRowExpired(row, ref)) {
-    if (row.expired && !row.dueDate) return "已标记过期，不计入月费";
-    const left = daysUntil(row.dueDate, ref);
-    if (left !== null && left < 0) return `已过期 ${Math.abs(left)} 天，不计入月费`;
-    return "已过期，不计入月费";
-  }
-  if (!row.dueDate) {
-    if (isCreditLike(row)) return "已订阅（额度/赠额，无需续费日）";
-    return "已订阅，建议设置续费日";
-  }
-  const left = daysUntil(row.dueDate, ref);
-  if (left === null) return "已订阅";
-  if (left < 0) return `已订阅，已过期 ${Math.abs(left)} 天`;
-  if (left === 0) return "已订阅，今天续费";
-  return `已订阅，距续费 ${left} 天`;
-}
-
-export function rowClass(row: SubscriptionRow, ref = new Date()): string {
-  const parts: string[] = [];
-  if (!row.subscribed) parts.push("row-wishlist");
-  else if (isRowExpired(row, ref)) parts.push("row-expired");
-  else {
-    const left = daysUntil(row.dueDate, ref);
-    if (left !== null && left < 0) parts.push("row-overdue");
-    if (left !== null && left >= 0 && left <= 3) parts.push("row-soon");
-  }
-  return parts.join(" ");
 }

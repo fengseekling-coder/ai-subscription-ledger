@@ -1,38 +1,26 @@
-import { formatDate, nextMonthlyDueDate, normalizeDateInput } from "./dates.js";
+import { formatDate, nextRecurringDueDate, normalizeDateInput } from "./dates.js";
 import { feeToCnyAmount, moneyValue } from "./money.js";
 import { normalizeBill, normalizeRow } from "./normalize.js";
 import { isActiveSubscription, needsDueDate } from "./rules.js";
-import { rowFromCatalogId } from "./catalog/from-catalog.js";
 import type { AppState, Bill, SubscriptionRow } from "./types.js";
 
 export function subById(state: AppState, id: string): SubscriptionRow | undefined {
   return state.rows.find((r) => r.id === id);
 }
 
-export function addRowFromCatalog(state: AppState, catalogId: string, subscribed = false): AppState | { error: string } {
-  const row = rowFromCatalogId(catalogId, subscribed);
-  if (!row) return { error: "未找到该服务" };
-  return { ...state, rows: [...state.rows, row] };
-}
-
-export function addRow(state: AppState): AppState {
-  const rows = [
-    ...state.rows,
-    normalizeRow({
-      category: "官方",
-      plan: "新套餐",
-      fee: "",
-      subscribed: false,
-      usage: "",
-      dueDate: "",
-    }),
-  ];
-  return { ...state, rows };
-}
-
 export function addRowWithDetails(
   state: AppState,
-  patch: Pick<SubscriptionRow, "category" | "plan" | "fee" | "usage" | "dueDate" | "subscribedAt"> & {
+  patch: Pick<
+    SubscriptionRow,
+    | "category"
+    | "purchaseChannel"
+    | "billingModel"
+    | "plan"
+    | "fee"
+    | "usage"
+    | "dueDate"
+    | "subscribedAt"
+  > & {
     subscribed: boolean;
     expired: boolean;
   },
@@ -42,6 +30,8 @@ export function addRowWithDetails(
   if (!plan) return { error: "请填写套餐名称" };
   let row = normalizeRow({
     category: patch.category,
+    purchaseChannel: patch.purchaseChannel,
+    billingModel: patch.billingModel,
     plan,
     fee: patch.fee,
     usage: patch.usage,
@@ -176,9 +166,10 @@ export function renewRow(state: AppState, index: number, ref = new Date()): AppS
   }
   const rows = state.rows.slice();
   const prevDue = rows[index].dueDate;
+  const intervalMonths = rows[index].billingModel === "年付" ? 12 : 1;
   rows[index] = normalizeRow({
     ...rows[index],
-    dueDate: nextMonthlyDueDate(rows[index].dueDate, ref),
+    dueDate: nextRecurringDueDate(rows[index].dueDate, intervalMonths, ref),
     subscribed: true,
     expired: false,
   });

@@ -92,56 +92,95 @@ describe("标题与副标题", () => {
   it("英文模式下标题与字段标签都翻译", () => {
     setup({ language: "en" });
     expect(screen.getByRole("heading", { name: "Add subscription" })).toBeInTheDocument();
-    expect(screen.getByText("Category")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Chat & assistants" })).toBeInTheDocument();
+    expect(screen.getByText("Purpose")).toBeInTheDocument();
+    expect(screen.getByLabelText("Purchase channel")).toBeInTheDocument();
+    expect(screen.getByLabelText("Billing model")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
   });
 });
 
-describe("分类选项：标签本地化，值保持数据原样", () => {
+describe("用途分类、购买渠道与计费方式", () => {
   it("中文模式显示中文标签", () => {
     setup();
-    for (const label of ["官方", "中转", "额度", "其他"]) {
+    for (const label of ["AI 服务", "开发工具", "云服务 / VPS", "设计创作", "其他"]) {
       expect(screen.getByRole("radio", { name: label })).toBeInTheDocument();
     }
   });
 
   it("英文模式显示英文标签", () => {
     setup({ language: "en" });
-    for (const label of ["Official", "Relay", "Credits", "Other"]) {
+    for (const label of ["AI services", "Developer tools", "Cloud / VPS", "Design & creation", "Other"]) {
       expect(screen.getByRole("radio", { name: label })).toBeInTheDocument();
     }
   });
 
-  /**
-   * 关键不变量：category 是写进账本的**数据值**，必须保持中文。
-   * 若哪天有人「顺手把分类也翻译了」，存进去的就会是 "Relay"，
-   * 而 isCreditLike / categoryClass / categoryRank 全靠中文子串判断，会集体失效。
-   */
-  it("英文界面下选「Relay」，提交出去的值仍是「中转」", async () => {
+  it("英文界面提交时仍写入稳定的中文数据值", async () => {
     const { onCommit } = setup({ language: "en" });
 
-    await userEvent.click(screen.getByRole("radio", { name: "Relay" }));
+    await userEvent.click(screen.getByRole("radio", { name: "Developer tools" }));
+    await userEvent.selectOptions(screen.getByLabelText("Purchase channel"), "中转");
+    await userEvent.selectOptions(screen.getByLabelText("Billing model"), "年付");
     await userEvent.type(screen.getByLabelText("Plan / credits"), "My Relay");
     await userEvent.click(screen.getByRole("button", { name: "Add" }));
 
     await waitFor(() => expect(onCommit).toHaveBeenCalled());
     const next = onCommit.mock.calls[0][0] as AppState;
     const added = next.rows[next.rows.length - 1];
-    expect(added.category).toBe("中转");
+    expect(added.category).toBe("开发工具");
+    expect(added.purchaseChannel).toBe("中转");
+    expect(added.billingModel).toBe("年付");
     expect(added.plan).toBe("My Relay");
   });
 
-  it("中文界面下选「额度」，提交出去的值是「中转额度包」", async () => {
+  it("额度包无需续费日期", async () => {
     const { onCommit } = setup();
 
-    await userEvent.click(screen.getByRole("radio", { name: "额度" }));
+    await userEvent.click(screen.getByRole("radio", { name: "AI 服务" }));
+    await userEvent.selectOptions(screen.getByLabelText("计费方式"), "额度包");
+    expect(screen.getByText("续费日期")).toBeInTheDocument();
+    expect(screen.getByText("此计费方式无需续费日期")).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText("套餐 / 额度"), "额度包 100 元");
     await userEvent.click(screen.getByRole("button", { name: "添加" }));
 
     await waitFor(() => expect(onCommit).toHaveBeenCalled());
-    const next = onCommit.mock.calls[0][0] as AppState;
-    expect(next.rows[next.rows.length - 1].category).toBe("中转额度包");
+    const added = (onCommit.mock.calls[0][0] as AppState).rows.at(-1)!;
+    expect(added.category).toBe("AI 服务");
+    expect(added.billingModel).toBe("额度包");
+    expect(added.dueDate).toBe("");
+  });
+});
+
+describe("AI 套餐预设", () => {
+  it("选择月付预设会填充套餐、价格和三个独立属性", async () => {
+    const { onCommit } = setup();
+
+    await userEvent.selectOptions(screen.getByLabelText("AI 套餐预设"), "cursor-pro");
+    expect(screen.getByLabelText("套餐 / 额度")).toHaveValue("Cursor Pro");
+    expect(screen.getByLabelText("金额")).toHaveValue("US$20");
+    expect(screen.getByRole("radio", { name: "开发工具" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByLabelText("购买渠道")).toHaveValue("官方");
+    expect(screen.getByLabelText("计费方式")).toHaveValue("月付");
+
+    await userEvent.click(screen.getByRole("button", { name: "添加" }));
+    await waitFor(() => expect(onCommit).toHaveBeenCalled());
+    expect((onCommit.mock.calls[0][0] as AppState).rows.at(-1)).toMatchObject({
+      category: "开发工具",
+      purchaseChannel: "官方",
+      billingModel: "月付",
+      plan: "Cursor Pro",
+      fee: "US$20",
+    });
+  });
+
+  it("选择 API 预设会切为按量计费并移除续费日期", async () => {
+    setup();
+    await userEvent.selectOptions(screen.getByLabelText("AI 套餐预设"), "openai-api");
+    expect(screen.getByLabelText("套餐 / 额度")).toHaveValue("OpenAI API");
+    expect(screen.getByLabelText("金额")).toHaveValue("");
+    expect(screen.getByLabelText("计费方式")).toHaveValue("按量计费");
+    expect(screen.getByText("此计费方式无需续费日期")).toBeInTheDocument();
   });
 });
 
@@ -180,7 +219,7 @@ describe("新增与编辑的提交结果", () => {
     const { onCommit } = setup();
 
     await userEvent.type(screen.getByLabelText("套餐 / 额度"), "ChatGPT Plus");
-    await userEvent.type(screen.getByLabelText("月费"), "US$20");
+    await userEvent.type(screen.getByLabelText("金额"), "US$20");
     await userEvent.type(screen.getByLabelText("备注"), "月付");
     await userEvent.click(screen.getByRole("button", { name: "添加" }));
 
@@ -188,7 +227,9 @@ describe("新增与编辑的提交结果", () => {
     const next = onCommit.mock.calls[0][0] as AppState;
     expect(next.rows).toHaveLength(1);
     expect(next.rows[0]).toMatchObject({
-      category: "官方",
+      category: "AI 服务",
+      purchaseChannel: "官方",
+      billingModel: "月付",
       plan: "ChatGPT Plus",
       fee: "US$20",
       usage: "月付",

@@ -241,6 +241,15 @@ describe("renewRow", () => {
     expect(unwrap(renewRow(s, 0, REF)).rows[0].dueDate).toBe("2026-08-10");
   });
 
+  it("advances annual subscriptions by one year and records the full annual fee", () => {
+    const s = stateWith([
+      { fee: "US$300", billingModel: "年付", dueDate: "2026-07-10" },
+    ]);
+    const next = unwrap(renewRow(s, 0, REF));
+    expect(next.rows[0].dueDate).toBe("2027-07-10");
+    expect(next.bills[0].amount).toBeCloseTo(300 * USD_CNY_RATE, 2);
+  });
+
   it("clears the expired flag and re-subscribes", () => {
     const s = stateWith([{ fee: "49", dueDate: "2026-06-10", expired: true }]);
     const next = unwrap(renewRow(s, 0, REF));
@@ -390,7 +399,18 @@ describe("addRowWithDetails", () => {
     expect(
       addRowWithDetails(
         stateWith([]),
-        { category: "官方", plan: "   ", fee: "20", usage: "", dueDate: "", subscribedAt: "", subscribed: true, expired: false },
+        {
+          category: "AI 服务",
+          purchaseChannel: "官方",
+          billingModel: "月付",
+          plan: "   ",
+          fee: "20",
+          usage: "",
+          dueDate: "",
+          subscribedAt: "",
+          subscribed: true,
+          expired: false,
+        },
         REF
       )
     ).toEqual({ error: "请填写套餐名称" });
@@ -400,7 +420,18 @@ describe("addRowWithDetails", () => {
     const next = unwrap(
       addRowWithDetails(
         stateWith([]),
-        { category: "官方", plan: "Claude Pro", fee: "US$20", usage: "", dueDate: "", subscribedAt: "", subscribed: true, expired: false },
+        {
+          category: "AI 服务",
+          purchaseChannel: "官方",
+          billingModel: "月付",
+          plan: "Claude Pro",
+          fee: "US$20",
+          usage: "",
+          dueDate: "",
+          subscribedAt: "",
+          subscribed: true,
+          expired: false,
+        },
         REF
       )
     );
@@ -528,6 +559,19 @@ describe("feeToCnyAmount 口径统一", () => {
     const cat = spendByCategory(s, "2026-07", REF_MONTH)[0];
     expect(cat.activeCount).toBe(0);
     expect(cat.feeMonthlyEst).toBe(0);
+  });
+
+  it("年付费用按十二个月折算为月费参考", () => {
+    const s = stateWith([
+      {
+        category: "AI 服务",
+        billingModel: "年付",
+        fee: "US$300",
+        dueDate: "2027-07-15",
+      },
+    ]);
+    const cat = spendByCategory(s, "2026-07", REF_MONTH)[0];
+    expect(cat.feeMonthlyEst).toBeCloseTo((300 * USD_CNY_RATE) / 12, 2);
   });
 
   it("spendByCategory 的 ref 可注入：有效性按 ref 而非真实时钟判定", () => {

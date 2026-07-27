@@ -3,7 +3,7 @@
 ## 目标
 
 - 与 Mac 共用 `@ai-sub/core`（业务、统计、迁移解析）
-- 数据：首期 **JSON 导入/导出**（AirDrop / 文件 App），后续可选 iCloud 或 Mac 同步
+- 数据：首期本地存储；跨端同步或受控备份方案在 iOS 实施时单独设计，后续可选 iCloud 或 Mac 同步
 
 ## 推荐技术路线
 
@@ -19,13 +19,13 @@
 
 1. 概览列表（只读 + 简单编辑）
 2. 待续费（3 天内）
-3. 从 Mac 导出 JSON 导入
+3. 受控迁移 / 同步入口（方案待定）
 4. Widget：下一续费日（后续）
 
 ## 与 Mac 数据交换
 
 ```bash
-# Mac 端：导出 → AirDrop 到 iPhone → iOS「导入」
+# 待 iOS 实施时确定：iCloud 同步或受控加密传输
 ```
 
-v3 JSON 结构与 `importState` / `hydrateImportedState` 一致。
+当前桌面端不提供文件导入或导出；iOS 端不会依赖已移除的 HTML / JSON 迁移流程。

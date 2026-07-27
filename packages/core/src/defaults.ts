@@ -2,7 +2,9 @@ import type { SubscriptionRow } from "./types.js";
 
 export const defaultRowsSeed: Omit<SubscriptionRow, "id">[] = [
   {
-    category: "示例",
+    category: "AI 服务",
+    purchaseChannel: "官方",
+    billingModel: "月付",
     plan: "示例月费工具 A",
     fee: "20",
     subscribed: true,
@@ -12,7 +14,9 @@ export const defaultRowsSeed: Omit<SubscriptionRow, "id">[] = [
     expired: false,
   },
   {
-    category: "示例",
+    category: "开发工具",
+    purchaseChannel: "官方",
+    billingModel: "年付",
     plan: "示例年费服务 B",
     fee: "99",
     subscribed: true,
@@ -21,5 +25,16 @@ export const defaultRowsSeed: Omit<SubscriptionRow, "id">[] = [
     subscribedAt: "",
     expired: false,
   },
-  { category: "示例", plan: "示例额度包 C", fee: "50", subscribed: false, usage: "", dueDate: "", subscribedAt: "", expired: false },
+  {
+    category: "AI 服务",
+    purchaseChannel: "中转",
+    billingModel: "额度包",
+    plan: "示例额度包 C",
+    fee: "50",
+    subscribed: false,
+    usage: "",
+    dueDate: "",
+    subscribedAt: "",
+    expired: false,
+  },
 ];

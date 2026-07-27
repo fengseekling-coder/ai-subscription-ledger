@@ -43,9 +43,7 @@ export function DueDatePickerModal({
             onConfirm(value.trim());
           }}
         >
-          <p className="catalog-hint" style={{ margin: "0 0 12px" }}>
-            {plan}
-          </p>
+          <p className="modal-description">{plan}</p>
           <div className="form-field">
             <label>{t.label}</label>
             <CalendarPicker value={value} onChange={setValue} language={language} />

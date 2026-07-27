@@ -1,8 +1,27 @@
 export type BillKind = "payment" | "renewal";
 
+export type SubscriptionCategory =
+  | "AI 服务"
+  | "开发工具"
+  | "云服务 / VPS"
+  | "域名 / 网络"
+  | "设计创作"
+  | "办公协作"
+  | "影音娱乐"
+  | "其他";
+
+export type PurchaseChannel = "官方" | "中转";
+
+export type BillingModel = "月付" | "年付" | "按量计费" | "额度包";
+
 export interface SubscriptionRow {
   id: string;
+  /** 使用场景分类。旧数据中的“官方/中转/中转额度包”会在 normalizeRow 中兼容迁移。 */
   category: string;
+  /** 购买来源，与 category 分开，避免“AI 服务”和“官方”混成同一个概念。 */
+  purchaseChannel: PurchaseChannel;
+  /** 计费方式。额度包与按量计费均不要求续费日。 */
+  billingModel: BillingModel;
   plan: string;
   fee: string;
   subscribed: boolean;
@@ -10,9 +29,6 @@ export interface SubscriptionRow {
   subscribedAt: string;
   expired: boolean;
   usage: string;
-  segment?: string;
-  subscribeUrl?: string;
-  portalUrl?: string;
 }
 
 export interface Bill {
@@ -28,8 +44,6 @@ export interface Bill {
 /** 自动监控：连接到远程 API 检查订阅状态 */
 export interface Monitor {
   id: string;
-  /** 关联服务库条目 id，如 "chatgpt-plus" */
-  catalogId: string;
   /** 监控类型：api = 通过官方 API 查询；browser = 浏览器自动化（预留） */
   type: "api" | "browser";
   /** API Key（明文存储于内存，落盘时由 db.rs 做 AES-256-GCM 加密） */

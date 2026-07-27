@@ -13,14 +13,6 @@ export function isoToDate(iso: string): Date {
 }
 
 /**
- * Parse ISO date string with timezone safety
- * Uses T12:00:00 to anchor to local noon
- */
-export function parseISODate(iso: string): Date {
-  return new Date(iso + "T12:00:00");
-}
-
-/**
  * Convert Date object to ISO date string (YYYY-MM-DD)
  */
 export function dateToIso(date: Date): string {
@@ -82,14 +74,6 @@ export function formatYearMonth(year: number, month: number): string {
 }
 
 /**
- * Get today's date as ISO string
- */
-export function todayISO(): string {
-  const n = new Date();
-  return dateToIso(new Date(n.getFullYear(), n.getMonth(), n.getDate()));
-}
-
-/**
  * Check if two dates are the same day
  */
 export function isSameDay(a: Date, b: Date): boolean {
@@ -146,4 +130,3 @@ export function nextMonth(year: number, month: number): [number, number] {
  * Chinese weekdays for calendar display
  */
 export const WEEKDAYS_CN = ["日", "一", "二", "三", "四", "五", "六"];
-

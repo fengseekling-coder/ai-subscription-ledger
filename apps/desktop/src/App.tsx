@@ -15,7 +15,6 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BillFormModal } from "./BillFormModal";
 import { BillsView } from "./BillsView";
-import { CatalogModal } from "./CatalogModal";
 import { Dashboard } from "./Dashboard";
 import { DueDatePickerModal } from "./DueDatePickerModal";
 import { MonitorModal } from "./MonitorModal";
@@ -38,7 +37,9 @@ import { Icon } from "./ui/Icon";
 type AppMode = "subs" | "expired" | "bills" | "pending" | "stats";
 
 const NEW_SUBSCRIPTION_DRAFT: SubscriptionFormDraft = {
-  category: "官方",
+  category: "AI 服务",
+  purchaseChannel: "官方",
+  billingModel: "月付",
   plan: "",
   fee: "",
   subscribedAt: "",
@@ -147,7 +148,6 @@ export default function App() {
   const [mode, setMode] = useState<AppMode>("subs");
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
-  const [showCatalog, setShowCatalog] = useState(false);
   const [duePickIndex, setDuePickIndex] = useState<number | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showMonitor, setShowMonitor] = useState(false);
@@ -337,6 +337,8 @@ export default function App() {
       : subModalMode === "edit" && editRow
         ? {
             category: editRow.category,
+            purchaseChannel: editRow.purchaseChannel,
+            billingModel: editRow.billingModel,
             plan: editRow.plan,
             fee: editRow.fee,
             subscribedAt: editRow.subscribedAt,
@@ -403,9 +405,6 @@ export default function App() {
             <div className="toolbar__group">
               <button type="button" className="primary" onClick={handlePrimary}>
                 {mode === "bills" ? tr.toolbar.addBill : tr.toolbar.add}
-              </button>
-              <button type="button" onClick={() => setShowCatalog(true)}>
-                {tr.toolbar.catalog}
               </button>
             </div>
             <div className="toolbar__group">
@@ -474,9 +473,6 @@ export default function App() {
             <div className="empty-ledger__actions">
               <button type="button" className="primary" onClick={openAddSubscription}>
                 {tr.empty.add}
-              </button>
-              <button type="button" onClick={() => setShowCatalog(true)}>
-                {tr.empty.fromCatalog}
               </button>
             </div>
           </div>
@@ -574,17 +570,6 @@ export default function App() {
           language={state.language}
           onCancel={() => setDuePickIndex(null)}
           onConfirm={confirmDueDate}
-        />
-      )}
-
-      {showCatalog && state && (
-        <CatalogModal
-          state={state}
-          onClose={() => setShowCatalog(false)}
-          onCommit={(next) => {
-            commit(next);
-            showNotice(tr.app.addedFromCatalog);
-          }}
         />
       )}
 

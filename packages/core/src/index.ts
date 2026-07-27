@@ -9,5 +9,5 @@ export * from "./actions.js";
 export * from "./load.js";
 export * from "./views.js";
 export * from "./analytics.js";
+export * from "./paste.js";
 export { defaultRowsSeed } from "./defaults.js";
-export * from "./catalog/index.js";

@@ -9,13 +9,8 @@
     "core:window:default",
     "core:window:allow-show",
     "core:window:allow-set-focus",
-    "dialog:default",
     "notification:default",
-    "fs:default",
-    "fs:allow-read-text-file",
-    "fs:allow-write-text-file",
     "core:tray:default",
-    "clipboard-manager:allow-read-image",
-    "clipboard-manager:allow-read-text"
+    "clipboard-manager:allow-read-image"
   ]
 }

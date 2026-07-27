@@ -17,12 +17,24 @@ import { invoke } from "@tauri-apps/api/core";
 import { readImage } from "@tauri-apps/plugin-clipboard-manager";
 import { useEffect, useRef, useState } from "react";
 import { CalendarPicker } from "./CalendarPicker";
-import { categoryLabel } from "./categoryLabel";
 import { resolveLang, tFor } from "./i18n";
+import {
+  AI_SUBSCRIPTION_PRESETS,
+  BILLING_MODEL_VALUES,
+  PURCHASE_CHANNEL_VALUES,
+  SUBSCRIPTION_CATEGORY_VALUES,
+  SUBSCRIPTION_PRESET_GROUPS,
+  billingModelNeedsDueDate,
+  formDefaultsFromCategory,
+  type BillingModel,
+  type PurchaseChannel,
+} from "./subscriptionPresets";
 import { Icon, ModalCloseButton } from "./ui/Icon";
 
 export type SubscriptionFormDraft = {
   category: string;
+  purchaseChannel?: SubscriptionRow["purchaseChannel"];
+  billingModel?: SubscriptionRow["billingModel"];
   plan: string;
   fee: string;
   subscribedAt: string;
@@ -31,12 +43,6 @@ export type SubscriptionFormDraft = {
   subscribed: boolean;
   expired: boolean;
 };
-
-/**
- * 分类选项。value 是写进账本的**数据值**，必须保持中文原样；
- * 只有 label 走字典本地化（与 SubTable 的 getCategoryStyle 同一套规则）。
- */
-const CATEGORY_VALUES = ["官方", "中转", "中转额度包", "其他"] as const;
 
 /** 从解析结果提取表单字段值，autoMatch 为 true 时自动匹配已有订阅 */
 function extractFields(
@@ -226,15 +232,34 @@ export function SubscriptionFormModal({
   }>({});
   const [feeError, setFeeError] = useState<string | null>(null);
   const [subscribedChecked, setSubscribedChecked] = useState(draft.subscribed);
-  const [category, setCategory] = useState(draft.category || "官方");
+  const legacyConcepts = formDefaultsFromCategory(draft.category);
+  const initialConcepts = {
+    category: legacyConcepts.category,
+    purchaseChannel: draft.purchaseChannel ?? legacyConcepts.purchaseChannel,
+    billingModel: draft.billingModel ?? legacyConcepts.billingModel,
+  };
+  const [category, setCategory] = useState(initialConcepts.category);
+  const [purchaseChannel, setPurchaseChannel] = useState<PurchaseChannel>(
+    initialConcepts.purchaseChannel
+  );
+  const [billingModel, setBillingModel] = useState<BillingModel>(initialConcepts.billingModel);
+  const dueDateRequired = billingModelNeedsDueDate(billingModel);
 
   // 切换新增/编辑目标时重置整个表单。React 推荐的写法是让父组件传 key 强制重挂，
   // 那要改 App.tsx 的调用点并核对全部 8 处表单状态的初值，单独做更稳妥。
   /* eslint-disable react-hooks/set-state-in-effect -- 表单重置，应改为父级传 key 重挂 */
   useEffect(() => {
+    const legacyDefaults = formDefaultsFromCategory(draft.category);
+    const nextConcepts = {
+      category: legacyDefaults.category,
+      purchaseChannel: draft.purchaseChannel ?? legacyDefaults.purchaseChannel,
+      billingModel: draft.billingModel ?? legacyDefaults.billingModel,
+    };
     setMatchedSub(null);
     setSubscribedChecked(draft.subscribed);
-    setCategory(draft.category || "官方");
+    setCategory(nextConcepts.category);
+    setPurchaseChannel(nextConcepts.purchaseChannel);
+    setBillingModel(nextConcepts.billingModel);
     setSubDate(draft.subscribedAt);
     setDueDate(draft.dueDate);
     setFeeError(null);
@@ -398,6 +423,35 @@ export function SubscriptionFormModal({
     }
   };
 
+  const setInputValue = (name: "plan" | "fee", value: string) => {
+    const input = formRef.current?.elements.namedItem(name) as HTMLInputElement | null;
+    if (input) input.value = value;
+  };
+
+  const applyPreset = (presetId: string) => {
+    const preset = AI_SUBSCRIPTION_PRESETS.find((entry) => entry.id === presetId);
+    if (!preset) return;
+    setInputValue("plan", preset.plan);
+    setInputValue("fee", preset.fee);
+    setCategory(preset.category);
+    setPurchaseChannel(preset.purchaseChannel);
+    setBillingModel(preset.billingModel);
+    setFeeError(null);
+    if (!billingModelNeedsDueDate(preset.billingModel)) {
+      setDueDate("");
+      setDateErrors((prev) => ({ ...prev, dueDate: undefined }));
+    }
+  };
+
+  const changeBillingModel = (value: BillingModel) => {
+    setBillingModel(value);
+    if (!billingModelNeedsDueDate(value)) {
+      setDueDate("");
+      setPickerOpen((open) => (open === "due" ? null : open));
+      setDateErrors((prev) => ({ ...prev, dueDate: undefined }));
+    }
+  };
+
   return (
     <div
       className="modal-overlay"
@@ -492,10 +546,12 @@ export function SubscriptionFormModal({
                 plan,
                 fee,
                 subscribedAt: subValidation.normalized ?? "",
-                dueDate: dueValidation.normalized ?? "",
+                dueDate: dueDateRequired ? (dueValidation.normalized ?? "") : "",
                 usage: String(fd.get("usage") ?? "").trim(),
                 subscribed: fd.get("subscribed") === "on",
                 expired: fd.get("expired") === "on",
+                purchaseChannel,
+                billingModel,
               };
 
               if (matchedSub && isAdd) {
@@ -638,6 +694,32 @@ export function SubscriptionFormModal({
 
             <section className="form-section">
               <div className="form-section__title">{ft.form.basic}</div>
+              {isAdd && (
+                <div className="form-field preset-field">
+                  <label htmlFor="sub-preset">{ft.form.preset}</label>
+                  <select
+                    id="sub-preset"
+                    className="select preset-select"
+                    defaultValue=""
+                    onChange={(event) => applyPreset(event.target.value)}
+                  >
+                    <option value="">{ft.form.presetPlaceholder}</option>
+                    {SUBSCRIPTION_PRESET_GROUPS.map((group) => (
+                      <optgroup key={group} label={ft.form.presetGroups[group]}>
+                        {AI_SUBSCRIPTION_PRESETS.filter((preset) => preset.group === group).map(
+                          (preset) => (
+                            <option key={preset.id} value={preset.id}>
+                              {preset.plan}{preset.fee ? ` · ${preset.fee}` : ""}
+                            </option>
+                          )
+                        )}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <span className="form-field__hint">{ft.form.presetHint}</span>
+                </div>
+              )}
+
               <div className="form-field">
                 <label id="sub-category-label">{ft.form.category}</label>
                 <input type="hidden" name="category" value={category} />
@@ -646,7 +728,7 @@ export function SubscriptionFormModal({
                   role="radiogroup"
                   aria-labelledby="sub-category-label"
                 >
-                  {CATEGORY_VALUES.map((value) => (
+                  {SUBSCRIPTION_CATEGORY_VALUES.map((value) => (
                     <button
                       key={value}
                       type="button"
@@ -657,9 +739,46 @@ export function SubscriptionFormModal({
                       }`}
                       onClick={() => setCategory(value)}
                     >
-                      {categoryLabel(value, ft.table)}
+                      {ft.form.categoryOptions[value]}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              <div className="form-row form-row--concepts">
+                <div className="form-field">
+                  <label htmlFor="sub-purchase-channel">{ft.form.purchaseChannel}</label>
+                  <select
+                    id="sub-purchase-channel"
+                    name="purchaseChannel"
+                    className="select"
+                    value={purchaseChannel}
+                    onChange={(event) =>
+                      setPurchaseChannel(event.target.value as PurchaseChannel)
+                    }
+                  >
+                    {PURCHASE_CHANNEL_VALUES.map((value) => (
+                      <option key={value} value={value}>
+                        {ft.form.purchaseChannelOptions[value]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-field">
+                  <label htmlFor="sub-billing-model">{ft.form.billingModel}</label>
+                  <select
+                    id="sub-billing-model"
+                    name="billingModel"
+                    className="select"
+                    value={billingModel}
+                    onChange={(event) => changeBillingModel(event.target.value as BillingModel)}
+                  >
+                    {BILLING_MODEL_VALUES.map((value) => (
+                      <option key={value} value={value}>
+                        {ft.form.billingModelOptions[value]}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -711,23 +830,30 @@ export function SubscriptionFormModal({
                     <span className="field-error">{dateErrors.subscribedAt}</span>
                   )}
                 </div>
-                <div className="form-field form-field--picker">
-                  <label>{ft.form.dueDate}</label>
-                  <input type="hidden" name="dueDate" value={dueDate} />
-                  <CalendarPicker
-                    language={language}
-                    value={dueDate}
-                    onChange={handleDueDateChange}
-                    isOpen={pickerOpen === "due"}
-                    onOpen={() =>
-                      setPickerOpen((prev) => (prev === "due" ? null : "due"))
-                    }
-                    onClose={() => setPickerOpen(null)}
-                  />
-                  {dateErrors.dueDate && (
-                    <span className="field-error">{dateErrors.dueDate}</span>
-                  )}
-                </div>
+                {dueDateRequired ? (
+                  <div className="form-field form-field--picker">
+                    <label>{ft.form.dueDate}</label>
+                    <input type="hidden" name="dueDate" value={dueDate} />
+                    <CalendarPicker
+                      language={language}
+                      value={dueDate}
+                      onChange={handleDueDateChange}
+                      isOpen={pickerOpen === "due"}
+                      onOpen={() =>
+                        setPickerOpen((prev) => (prev === "due" ? null : "due"))
+                      }
+                      onClose={() => setPickerOpen(null)}
+                    />
+                    {dateErrors.dueDate && (
+                      <span className="field-error">{dateErrors.dueDate}</span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="form-field billing-no-renewal">
+                    <span className="billing-no-renewal__label">{ft.form.dueDate}</span>
+                    <span className="billing-no-renewal__value">{ft.form.noRenewalDate}</span>
+                  </div>
+                )}
               </div>
             </section>
 

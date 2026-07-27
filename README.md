@@ -2,6 +2,13 @@
 
 纯订阅/会员账本：订阅、账单、续费提醒、预算统计。业务规则在 `@ai-sub/core`，桌面端与 core demo/parity 摘要保持同一统计口径。
 
+## 当前版本：0.1.3
+
+- 移除独立「服务库」：不再维护可浏览的服务目录、链接或自动同步承诺。
+- 新增订阅表单内提供主流 AI 套餐预填，分为对话与助手、AI 编程、创作与媒体、模型 API 四组；名称、用途、渠道、计费方式与参考价均可继续修改。
+- 订阅信息拆分为用途分类、购买渠道、计费方式；月付和年付才参与续费提醒，按量计费与额度包无需续费日。
+- 旧账本中的「官方 / 中转 / 中转额度包」会在读取时自动迁移到新字段。
+
 ## 许可
 
 本仓库源码公开给个人学习、研究、测试和非商用使用。商业使用、商业分发、闭源改造售卖或作为商业服务的一部分使用，均未被授权。
@@ -57,21 +64,20 @@ Rust 侧（在 `apps/desktop/src-tauri` 下执行，CI 同款）：
 - **生产版（打包）**：`npm run tauri:build -w @ai-sub/desktop`（即 `tauri build`）。编译 release 并产出：
   - `apps/desktop/src-tauri/target/release/bundle/macos/订阅账本.app` —— 可直接拖入 `/Applications`；
   - `apps/desktop/src-tauri/target/release/bundle/dmg/订阅账本_*.dmg` —— 安装盘。
-  - ⚠️ 若环境缺少 `create-dmg`，Tauri 自带 dmg 打包会失败（仅留下中间 `rw.*.dmg`）。可用 `hdiutil convert <rw镜像> -format UDZO -o <目标.dmg>` 手动生成正式 dmg。
+  - 若 Tauri 的 DMG 阶段受本机沙盒限制，可在 `apps/desktop/src-tauri` 下调用 Tauri 生成的 `target/release/bundle/dmg/bundle_dmg.sh` 重试。
 - 构建产物均在 `target/`（已被 gitignore），不会进入仓库。
 
 签名与公证见 [docs/macos-signing.md](./docs/macos-signing.md)。
 
 ## 数据位置（桌面）
 
-应用数据目录下的 `ledger.db`（SQLite KV，键 `ai-subscription-tracker-v3`）。导出 JSON 为明文备份，请自行保管。
+应用数据目录下的 `ledger.db`（SQLite KV，键 `ai-subscription-tracker-v3`）。当前版本不提供文件导出；迁移设备前请自行保留该应用数据目录的副本。
 
-> **数据互通说明**：仓库根目录的 `ai_subscription_tracker.html` 是独立单文件版（localStorage），与桌面端 App（`ledger.db`）**数据互不互通**——两边各自独立存储、互不可见。它已被 `.gitignore` 忽略，仅作本地草稿 / 备用。
 
 ## 仓库结构
 
 ```
-packages/core/     # 领域逻辑、服务库、迁移、统计
+packages/core/     # 领域逻辑、导入解析、迁移、统计
 apps/desktop/      # Tauri + React 壳
 apps/ios/          # 占位，见 docs/ios-roadmap.md
 docs/              # 产品与技术文档
@@ -82,4 +88,4 @@ scripts/           # parity 等脚本
 
 - 修改 `packages/core/src` 中与统计、续费、导入相关的代码后，执行 **`npm run parity`**。它会把固定参考日期（2026-07-05）下的 core demo 摘要与仓库里的 `scripts/parity-baseline.json` 逐项比对，不一致就列出漂移项并以非零码退出（CI 同款）。确认漂移是预期结果后，用 `npm run parity -- --update` 重写基准。
 - core 里凡是与「今天」有关的函数都接受可选的 `ref` 参数（`computeSummary`、`renewRow`、`addBill`、`pickDueDate` 等）。新增此类逻辑时一律从 `ref` 取当前时间，不要直接调 `todayLocalISO()` / `new Date()`——否则该函数无法被确定性地测试。
-- `sketches/`、`vacuum-cursor-state.sh` 为本地草稿/工具，不参与发行。
+- `sketches/` 为本地宣传图草稿，不参与发行。

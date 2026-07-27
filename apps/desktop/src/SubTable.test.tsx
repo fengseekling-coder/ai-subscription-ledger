@@ -22,7 +22,9 @@ function ledger(rows: Partial<SubscriptionRow>[]): AppState {
     budget: 500,
     rows: rows.map((r, i) => ({
       id: `r${i + 1}`,
-      category: "官方",
+      category: "AI 服务",
+      purchaseChannel: "官方",
+      billingModel: "月付",
       plan: `Plan ${i + 1}`,
       fee: "",
       subscribed: true,
@@ -52,14 +54,28 @@ describe("SubTable 表头与分类", () => {
     expect(screen.getByText("剩余")).toBeInTheDocument();
   });
 
-  it("英文模式下表头与已知分类都翻译", () => {
-    const s = ledger([{ category: "官方" }, { category: "中转" }, { category: "中转额度包" }]);
+  it("英文模式下表头与用途分类都翻译", () => {
+    const s = ledger([
+      { category: "AI 服务" },
+      { category: "开发工具" },
+      { category: "云服务 / VPS" },
+      { category: "域名 / 网络" },
+      { category: "设计创作" },
+      { category: "办公协作" },
+      { category: "影音娱乐" },
+      { category: "其他" },
+    ]);
     render(<SubTable entries={visibleRowEntries(s)} language="en" {...handlers()} />);
     expect(screen.getByText("Category")).toBeInTheDocument();
     expect(screen.getByText("Status")).toBeInTheDocument();
-    expect(screen.getByText("Official")).toBeInTheDocument();
-    expect(screen.getByText("Relay")).toBeInTheDocument();
-    expect(screen.getByText("Credits")).toBeInTheDocument();
+    expect(screen.getByText("AI services")).toBeInTheDocument();
+    expect(screen.getByText("Developer tools")).toBeInTheDocument();
+    expect(screen.getByText("Cloud / VPS")).toBeInTheDocument();
+    expect(screen.getByText("Domains / network")).toBeInTheDocument();
+    expect(screen.getByText("Design & creation")).toBeInTheDocument();
+    expect(screen.getByText("Productivity")).toBeInTheDocument();
+    expect(screen.getByText("Media")).toBeInTheDocument();
+    expect(screen.getByText("Other")).toBeInTheDocument();
   });
 
   /** category 是用户数据：自定义分类必须原样显示，不能被翻译或改写。 */
@@ -97,7 +113,15 @@ describe("SubTable 续费日徽标", () => {
   });
 
   it("额度类订阅显示为非周期，不显示剩余天数", () => {
-    const s = ledger([{ category: "中转额度包", plan: "额度包 100 元（不限时）", fee: "100" }]);
+    const s = ledger([
+      {
+        category: "AI 服务",
+        purchaseChannel: "中转",
+        billingModel: "额度包",
+        plan: "额度包 100 元（不限时）",
+        fee: "100",
+      },
+    ]);
     render(<SubTable entries={visibleRowEntries(s)} language="en" {...handlers()} />);
     expect(screen.getByText("One-off")).toBeInTheDocument();
   });

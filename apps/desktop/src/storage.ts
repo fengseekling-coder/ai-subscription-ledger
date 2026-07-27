@@ -6,6 +6,7 @@ type Dto = {
   budget: number;
   rows: unknown[];
   bills: unknown[];
+  monitors?: unknown[];
   language?: string;
   appearance?: unknown;
 };
@@ -27,16 +28,16 @@ function iso(offsetDays: number): string {
 /** 浏览器预览用的演示账本（不影响 Tauri 正式数据） */
 function browserDemoState(): AppState {
   const rows = [
-    { id: "demo-1", category: "官方", plan: "ChatGPT Plus", fee: "US$20", subscribed: true, usage: "AI 对话月付", dueDate: iso(1), subscribedAt: iso(-20), expired: false },
-    { id: "demo-2", category: "官方", plan: "Claude Pro", fee: "US$20", subscribed: true, usage: "Anthropic 月付", dueDate: iso(2), subscribedAt: iso(-16), expired: false },
-    { id: "demo-3", category: "官方", plan: "GitHub Copilot Pro", fee: "US$10", subscribed: true, usage: "开发助手月付", dueDate: iso(0), subscribedAt: iso(-30), expired: false },
-    { id: "demo-4", category: "中转", plan: "API 中转站·月卡", fee: "49", subscribed: true, usage: "GPT/Claude 通用", dueDate: iso(13), subscribedAt: iso(-17), expired: false },
-    { id: "demo-5", category: "官方", plan: "Midjourney Basic", fee: "US$10", subscribed: true, usage: "图像生成月付", dueDate: iso(-2), subscribedAt: iso(-32), expired: false },
-    { id: "demo-6", category: "中转额度包", plan: "额度包 100 元（不限时）", fee: "100", subscribed: true, usage: "按量扣减", dueDate: "", subscribedAt: iso(-9), expired: false },
-    { id: "demo-7", category: "官方", plan: "Notion Plus", fee: "US$12", subscribed: true, usage: "文档协作", dueDate: iso(40), subscribedAt: iso(-50), expired: false },
-    { id: "demo-8", category: "其他", plan: "iCloud+ 50GB", fee: "6", subscribed: true, usage: "云存储", dueDate: iso(25), subscribedAt: iso(-5), expired: false },
-    { id: "demo-9", category: "官方", plan: "Perplexity Pro", fee: "US$20", subscribed: false, usage: "想买清单", dueDate: "", subscribedAt: "", expired: false },
-    { id: "demo-10", category: "官方", plan: "Runway Standard", fee: "US$15", subscribed: true, usage: "视频生成", dueDate: iso(-40), subscribedAt: iso(-70), expired: true },
+    { id: "demo-1", category: "AI 服务", purchaseChannel: "官方", billingModel: "月付", plan: "ChatGPT Plus", fee: "US$20", subscribed: true, usage: "AI 对话月付", dueDate: iso(1), subscribedAt: iso(-20), expired: false },
+    { id: "demo-2", category: "AI 服务", purchaseChannel: "官方", billingModel: "月付", plan: "Claude Pro", fee: "US$20", subscribed: true, usage: "Anthropic 月付", dueDate: iso(2), subscribedAt: iso(-16), expired: false },
+    { id: "demo-3", category: "开发工具", purchaseChannel: "官方", billingModel: "月付", plan: "GitHub Copilot Pro", fee: "US$10", subscribed: true, usage: "开发助手月付", dueDate: iso(0), subscribedAt: iso(-30), expired: false },
+    { id: "demo-4", category: "AI 服务", purchaseChannel: "中转", billingModel: "月付", plan: "API 中转站·月卡", fee: "49", subscribed: true, usage: "GPT/Claude 通用", dueDate: iso(13), subscribedAt: iso(-17), expired: false },
+    { id: "demo-5", category: "设计创作", purchaseChannel: "官方", billingModel: "月付", plan: "Midjourney Basic", fee: "US$10", subscribed: true, usage: "图像生成月付", dueDate: iso(-2), subscribedAt: iso(-32), expired: false },
+    { id: "demo-6", category: "AI 服务", purchaseChannel: "中转", billingModel: "额度包", plan: "额度包 100 元（不限时）", fee: "100", subscribed: true, usage: "按量扣减", dueDate: "", subscribedAt: iso(-9), expired: false },
+    { id: "demo-7", category: "办公协作", purchaseChannel: "官方", billingModel: "月付", plan: "Notion Plus", fee: "US$12", subscribed: true, usage: "文档协作", dueDate: iso(40), subscribedAt: iso(-50), expired: false },
+    { id: "demo-8", category: "云服务 / VPS", purchaseChannel: "官方", billingModel: "月付", plan: "iCloud+ 50GB", fee: "6", subscribed: true, usage: "云存储", dueDate: iso(25), subscribedAt: iso(-5), expired: false },
+    { id: "demo-9", category: "AI 服务", purchaseChannel: "官方", billingModel: "月付", plan: "Perplexity Pro", fee: "US$20", subscribed: false, usage: "想买清单", dueDate: "", subscribedAt: "", expired: false },
+    { id: "demo-10", category: "设计创作", purchaseChannel: "官方", billingModel: "月付", plan: "Runway Standard", fee: "US$15", subscribed: true, usage: "视频生成", dueDate: iso(-40), subscribedAt: iso(-70), expired: true },
   ];
   const bills = [
     { id: "b-1", subscriptionId: "demo-1", amount: 146, paidAt: iso(-20), orderId: "OPENAI-001", note: "ChatGPT Plus 月费", kind: "payment" },
@@ -56,6 +57,7 @@ function toDto(state: AppState): Dto {
     budget: state.budget,
     rows: state.rows,
     bills: state.bills,
+    monitors: state.monitors,
     language: state.language,
     appearance: state.appearance,
   };
@@ -66,6 +68,7 @@ function fromDto(dto: Dto): AppState {
     budget: dto.budget,
     rows: dto.rows,
     bills: dto.bills,
+    monitors: dto.monitors,
     language: dto.language,
     appearance: dto.appearance,
   });

@@ -1,10 +1,12 @@
 import { fmtMoney, spendByCategory, spendByMonth, type AppState } from "@ai-sub/core";
+import { categoryLabel } from "./categoryLabel";
 import { resolveLang, tFor } from "./i18n";
 import { formatMonthKeyForLang } from "./utils/dateUtils";
 
 export function StatsView({ state }: { state: AppState }) {
   const lang = resolveLang(state.language);
-  const t = tFor(lang).stats;
+  const dict = tFor(lang);
+  const t = dict.stats;
   const byCat = spendByCategory(state);
   const byMonth = spendByMonth(state, 6);
   const maxMonth = Math.max(1, ...byMonth.map((m) => m.total));
@@ -27,7 +29,9 @@ export function StatsView({ state }: { state: AppState }) {
               {byCat.map((row) => (
                 <tr key={row.category}>
                   <td>
-                    <span className={`category ${row.cls}`}>{row.category}</span>
+                    <span className={`category ${row.cls}`}>
+                      {categoryLabel(row.category, dict.form.categoryOptions)}
+                    </span>
                   </td>
                   <td>
                     {row.activeCount}/{row.count}

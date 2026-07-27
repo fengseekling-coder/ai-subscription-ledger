@@ -3,6 +3,7 @@ import {
   daysUntil,
   dueMeta,
   feeDisplayParts,
+  categoryClass,
   isCreditLike,
   type AppState,
   type SubscriptionRow,
@@ -44,21 +45,16 @@ type SubTableRowProps = {
   index: number;
   handlers: SubTableHandlers;
   t: Dict["table"];
+  categoryLabels: Dict["form"]["categoryOptions"];
 };
 
-/** 配色按分类分档；展示文案统一走 categoryLabel（见该文件注释）。 */
-const CATEGORY_CLASS: Record<string, string> = {
-  官方: "category-tag--official",
-  中转: "category-tag--relay",
-  中转额度包: "category-tag--credit",
-};
-
-const getCategoryStyle = (category: string, t: Dict["table"]): { class: string; label: string } => ({
-  class: CATEGORY_CLASS[category] ?? "category-tag--other",
-  label: categoryLabel(category, t),
-});
-
-const SubTableRow = memo(function SubTableRow({ row, index, handlers, t }: SubTableRowProps) {
+const SubTableRow = memo(function SubTableRow({
+  row,
+  index,
+  handlers,
+  t,
+  categoryLabels,
+}: SubTableRowProps) {
   const {
     onToggle,
     onEdit,
@@ -81,7 +77,10 @@ const SubTableRow = memo(function SubTableRow({ row, index, handlers, t }: SubTa
     return t.daysLeft(left);
   }, [row.dueDate, due.label, t]);
   const feeParts = useMemo(() => feeDisplayParts(row.fee), [row.fee]);
-  const categoryStyle = getCategoryStyle(row.category, t);
+  const categoryStyle = {
+    class: `category-tag--${categoryClass(row.category)}`,
+    label: categoryLabel(row.category, categoryLabels),
+  };
 
   const handleToggle = useCallback(() => onToggle(index), [onToggle, index]);
   const handleEdit = useCallback(() => onEdit(index), [onEdit, index]);
@@ -189,8 +188,9 @@ export const SubTable = memo(function SubTable({
   entries: { row: SubscriptionRow; index: number }[];
   language: AppState["language"];
 } & SubTableHandlers) {
-  const t = tFor(resolveLang(language)).table;
-  const empty = tFor(resolveLang(language)).empty;
+  const dict = tFor(resolveLang(language));
+  const t = dict.table;
+  const empty = dict.empty;
   const {
     onToggle,
     onEdit,
@@ -240,7 +240,14 @@ export const SubTable = memo(function SubTable({
         </thead>
         <tbody>
           {entries.map(({ row, index }) => (
-            <SubTableRow key={row.id} row={row} index={index} handlers={stableHandlers} t={t} />
+            <SubTableRow
+              key={row.id}
+              row={row}
+              index={index}
+              handlers={stableHandlers}
+              t={t}
+              categoryLabels={dict.form.categoryOptions}
+            />
           ))}
         </tbody>
       </table>

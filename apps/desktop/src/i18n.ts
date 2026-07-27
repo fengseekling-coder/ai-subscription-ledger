@@ -11,7 +11,7 @@ export type Dict = {
   brand: string;
   common: { close: string };
   nav: { subs: string; stats: string; expired: string; bills: string; pending: string };
-  toolbar: { add: string; addBill: string; catalog: string; theme: string; settings: string };
+  toolbar: { add: string; addBill: string; theme: string; settings: string };
   dashboard: {
     monthSpend: string;
     budgetLeft: string;
@@ -32,7 +32,7 @@ export type Dict = {
     monitorConnected: (n: number, errors: number) => string;
     monitorNotChecked: string;
   };
-  empty: { title: string; desc: string; add: string; fromCatalog: string };
+  empty: { title: string; desc: string; add: string };
   notice: { copied: string; failed: string; deleted: string; saved: string };
   settings: {
     title: string;
@@ -66,7 +66,26 @@ export type Dict = {
     parseOcr: string;
     parsing: string;
     basic: string;
+    preset: string;
+    presetPlaceholder: string;
+    presetHint: string;
+    presetGroups: Record<"对话与助手" | "AI 编程" | "创作与媒体" | "模型 API", string>;
     category: string;
+    categoryOptions: Record<
+      | "AI 服务"
+      | "开发工具"
+      | "云服务 / VPS"
+      | "域名 / 网络"
+      | "设计创作"
+      | "办公协作"
+      | "影音娱乐"
+      | "其他",
+      string
+    >;
+    purchaseChannel: string;
+    purchaseChannelOptions: Record<"官方" | "中转", string>;
+    billingModel: string;
+    billingModelOptions: Record<"月付" | "年付" | "按量计费" | "额度包", string>;
     plan: string;
     planPlaceholder: string;
     fee: string;
@@ -74,6 +93,7 @@ export type Dict = {
     dates: string;
     subDate: string;
     dueDate: string;
+    noRenewalDate: string;
     other: string;
     note: string;
     notePlaceholder: string;
@@ -123,36 +143,11 @@ export type Dict = {
     dueToday: string;
     overdueDays: (n: number) => string;
     daysLeft: (n: number) => string;
-    /** 已知分类的展示名；自定义分类原样显示。见 categoryLabel.ts */
-    catOfficial: string;
-    catRelay: string;
-    catCredit: string;
-    catOther: string;
     unrenewedPrompt: (plan: string) => string;
     confirmDeleteRow: string;
     renewedNotice: (plan: string, due: string) => string;
     deletedNotice: (plan: string) => string;
     unsubscribedNotice: (plan: string) => string;
-  };
-  catalog: {
-    title: string;
-    searchPlaceholder: string;
-    hint: string;
-    empty: string;
-    segAll: string;
-    segRelay: string;
-    segCredit: string;
-    segDev: string;
-    segDesign: string;
-    segMedia: string;
-    segOffice: string;
-    segCloud: string;
-    badgePaste: string;
-    badgeEmail: string;
-    badgeOauth: string;
-    feeHint: (fee: string) => string;
-    addToWishlist: string;
-    alreadySubscribed: string;
   };
   monitor: {
     title: string;
@@ -193,7 +188,6 @@ export type Dict = {
     remindersTurnOn: string;
     pagesNav: string;
     fallbackPlan: string;
-    addedFromCatalog: string;
     langSwitched: string;
   };
   duePicker: {
@@ -267,7 +261,7 @@ const zh: Dict = {
   brand: "订阅账本",
   common: { close: "关闭" },
   nav: { subs: "概览", stats: "统计", expired: "已过期", bills: "账单", pending: "待续费" },
-  toolbar: { add: "新增订阅", addBill: "记一笔", catalog: "服务库", theme: "深色", settings: "设置" },
+  toolbar: { add: "新增订阅", addBill: "记一笔", theme: "深色", settings: "设置" },
   dashboard: {
     monthSpend: "本月支出",
     budgetLeft: "预算剩余",
@@ -289,7 +283,7 @@ const zh: Dict = {
       errors > 0 ? `${n} 个服务已连接，${errors} 个异常` : `${n} 个服务已连接`,
     monitorNotChecked: "尚未检查",
   },
-  empty: { title: "暂无订阅", desc: "点右上角新增，或从服务库添加", add: "新增订阅", fromCatalog: "从服务库添加" },
+  empty: { title: "暂无订阅", desc: "新增一条订阅，套餐预设可在表单内选择", add: "新增订阅" },
   notice: { copied: "已复制", failed: "操作失败", deleted: "已删除", saved: "已保存" },
   settings: {
     title: "设置",
@@ -323,14 +317,46 @@ const zh: Dict = {
     parseOcr: "粘贴图片 OCR",
     parsing: "识别中…",
     basic: "基本信息",
-    category: "分类",
+    preset: "AI 套餐预设",
+    presetPlaceholder: "选择套餐快速填充（可选）",
+    presetHint: "参考价会随地区、税费与官方调整变化，填写前请核对账单。",
+    presetGroups: {
+      "对话与助手": "对话与助手",
+      "AI 编程": "AI 编程",
+      "创作与媒体": "创作与媒体",
+      "模型 API": "模型 API",
+    },
+    category: "用途分类",
+    categoryOptions: {
+      "AI 服务": "AI 服务",
+      "开发工具": "开发工具",
+      "云服务 / VPS": "云服务 / VPS",
+      "域名 / 网络": "域名 / 网络",
+      "设计创作": "设计创作",
+      "办公协作": "办公协作",
+      "影音娱乐": "影音娱乐",
+      "其他": "其他",
+    },
+    purchaseChannel: "购买渠道",
+    purchaseChannelOptions: {
+      官方: "官方",
+      中转: "中转",
+    },
+    billingModel: "计费方式",
+    billingModelOptions: {
+      月付: "月付",
+      年付: "年付",
+      按量计费: "按量计费",
+      额度包: "额度包",
+    },
     plan: "套餐 / 额度",
     planPlaceholder: "例如 ChatGPT Plus",
-    fee: "月费",
+    fee: "金额",
     feePlaceholder: "例如 $20 或 29.9",
     dates: "日期",
     subDate: "订阅日期",
     dueDate: "续费日期",
+    noRenewalDate: "此计费方式无需续费日期",
     other: "其他",
     note: "备注",
     notePlaceholder: "可选：订单号、账号备注等",
@@ -380,36 +406,12 @@ const zh: Dict = {
     dueToday: "今天到期",
     overdueDays: (n) => `已过期 ${n} 天`,
     daysLeft: (n) => `剩余 ${n} 天`,
-    catOfficial: "官方",
-    catRelay: "中转",
-    catCredit: "额度",
-    catOther: "其他",
     unrenewedPrompt: (plan) =>
       `${plan} 未续费：删除条目，还是改为未订阅？\n确定 = 删除，取消 = 改为未订阅`,
     confirmDeleteRow: "确定删除这一行？",
     renewedNotice: (plan, due) => `${plan} 已续费，续费日 → ${due}`,
     deletedNotice: (plan) => `${plan} 已删除。`,
     unsubscribedNotice: (plan) => `${plan} 已改为未订阅。`,
-  },
-  catalog: {
-    title: "服务库",
-    searchPlaceholder: "搜索 ChatGPT、Cursor、中转…",
-    hint: "支持自动入账的排在前面（粘贴 JSON / 订单文本）。不含日常网购与银行流水。",
-    empty: "没有匹配的服务，可用「新增订阅」自定义。",
-    segAll: "全部",
-    segRelay: "中转",
-    segCredit: "额度包",
-    segDev: "开发",
-    segDesign: "设计",
-    segMedia: "影音",
-    segOffice: "办公",
-    segCloud: "云",
-    badgePaste: "可粘贴入账",
-    badgeEmail: "邮件（规划）",
-    badgeOauth: "可自动监控",
-    feeHint: (fee) => `参考 ¥${fee}`,
-    addToWishlist: "加入清单",
-    alreadySubscribed: "已订阅",
   },
   monitor: {
     title: "自动监控",
@@ -450,7 +452,6 @@ const zh: Dict = {
     remindersTurnOn: "开启续费提醒",
     pagesNav: "页面",
     fallbackPlan: "订阅",
-    addedFromCatalog: "已从服务库添加",
     langSwitched: "语言：简体中文",
   },
   duePicker: {
@@ -524,7 +525,7 @@ const en: Dict = {
   brand: "Subscription Ledger",
   common: { close: "Close" },
   nav: { subs: "Overview", stats: "Stats", expired: "Expired", bills: "Bills", pending: "Renewals" },
-  toolbar: { add: "Add", addBill: "Add bill", catalog: "Catalog", theme: "Theme", settings: "Settings" },
+  toolbar: { add: "Add", addBill: "Add bill", theme: "Theme", settings: "Settings" },
   dashboard: {
     monthSpend: "This month",
     budgetLeft: "Budget left",
@@ -546,7 +547,7 @@ const en: Dict = {
       errors > 0 ? `${n} connected, ${errors} failing` : `${n} connected`,
     monitorNotChecked: "Not checked yet",
   },
-  empty: { title: "No subscriptions yet", desc: "Add from the toolbar, or pick from the catalog", add: "Add subscription", fromCatalog: "From catalog" },
+  empty: { title: "No subscriptions yet", desc: "Add a subscription and optionally choose a plan preset in the form", add: "Add subscription" },
   notice: { copied: "Copied", failed: "Failed", deleted: "Deleted", saved: "Saved" },
   settings: {
     title: "Settings",
@@ -580,14 +581,46 @@ const en: Dict = {
     parseOcr: "Paste image (OCR)",
     parsing: "Reading…",
     basic: "Basics",
-    category: "Category",
+    preset: "AI plan preset",
+    presetPlaceholder: "Choose a plan to fill fields (optional)",
+    presetHint: "Reference prices vary by region, tax and provider updates. Check your bill before saving.",
+    presetGroups: {
+      "对话与助手": "Chat & assistants",
+      "AI 编程": "AI coding",
+      "创作与媒体": "Creative & media",
+      "模型 API": "Model APIs",
+    },
+    category: "Purpose",
+    categoryOptions: {
+      "AI 服务": "AI services",
+      "开发工具": "Developer tools",
+      "云服务 / VPS": "Cloud / VPS",
+      "域名 / 网络": "Domains / network",
+      "设计创作": "Design & creation",
+      "办公协作": "Productivity",
+      "影音娱乐": "Media",
+      "其他": "Other",
+    },
+    purchaseChannel: "Purchase channel",
+    purchaseChannelOptions: {
+      官方: "Official",
+      中转: "Relay",
+    },
+    billingModel: "Billing model",
+    billingModelOptions: {
+      月付: "Monthly",
+      年付: "Annual",
+      按量计费: "Usage-based",
+      额度包: "Credit pack",
+    },
     plan: "Plan / credits",
     planPlaceholder: "e.g. ChatGPT Plus",
-    fee: "Monthly fee",
+    fee: "Amount",
     feePlaceholder: "e.g. $20 or 29.9",
     dates: "Dates",
     subDate: "Subscribed on",
     dueDate: "Next renewal",
+    noRenewalDate: "No renewal date for this billing model",
     other: "Other",
     note: "Note",
     notePlaceholder: "Optional: order id, account note…",
@@ -637,36 +670,12 @@ const en: Dict = {
     dueToday: "Due today",
     overdueDays: (n) => (n === 1 ? "1 day overdue" : `${n} days overdue`),
     daysLeft: (n) => (n === 1 ? "1 day left" : `${n} days left`),
-    catOfficial: "Official",
-    catRelay: "Relay",
-    catCredit: "Credits",
-    catOther: "Other",
     unrenewedPrompt: (plan) =>
       `${plan} was not renewed. Delete the entry, or mark it unsubscribed?\nOK = delete, Cancel = mark unsubscribed`,
     confirmDeleteRow: "Delete this row?",
     renewedNotice: (plan, due) => `${plan} renewed — next due ${due}`,
     deletedNotice: (plan) => `${plan} deleted.`,
     unsubscribedNotice: (plan) => `${plan} marked unsubscribed.`,
-  },
-  catalog: {
-    title: "Catalog",
-    searchPlaceholder: "Search ChatGPT, Cursor, relays…",
-    hint: "Services with automatic bill capture come first (paste JSON / order text). Everyday shopping and bank statements are out of scope.",
-    empty: "No matching service — use “Add subscription” to create your own.",
-    segAll: "All",
-    segRelay: "Relay",
-    segCredit: "Credits",
-    segDev: "Dev",
-    segDesign: "Design",
-    segMedia: "Media",
-    segOffice: "Office",
-    segCloud: "Cloud",
-    badgePaste: "Paste to bill",
-    badgeEmail: "Email (planned)",
-    badgeOauth: "Auto-monitored",
-    feeHint: (fee) => `approx ¥${fee}`,
-    addToWishlist: "Add to wishlist",
-    alreadySubscribed: "Subscribed",
   },
   monitor: {
     title: "Automatic monitoring",
@@ -707,7 +716,6 @@ const en: Dict = {
     remindersTurnOn: "Turn on renewal reminders",
     pagesNav: "Pages",
     fallbackPlan: "subscription",
-    addedFromCatalog: "Added from the catalog",
     langSwitched: "Language: English",
   },
   duePicker: {

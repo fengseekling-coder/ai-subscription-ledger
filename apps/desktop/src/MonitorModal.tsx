@@ -17,7 +17,6 @@ interface MonitorCheckResult {
 
 interface MonitorInput {
   id: string;
-  catalogId: string;
   serviceId: string;
   apiKey: string;
 }
@@ -26,7 +25,6 @@ interface SupportedService {
   id: string;
   label: string;
   desc: string;
-  catalogIds: string[];
 }
 
 function maskKey(key: string): string {
@@ -115,10 +113,8 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
   const confirmAdd = useCallback(() => {
     if (!apiKey.trim() || !testResult || testResult.status === "error") return;
     const id = newId();
-    const svc = services.find((s) => s.id === selectedService);
-    const catalogId = svc?.catalogIds?.[0] ?? selectedService;
     const newMonitor: Monitor = {
-      id, catalogId, type: "api", apiKey: apiKey.trim(),
+      id, type: "api", apiKey: apiKey.trim(),
       serviceId: selectedService, lastChecked: new Date().toISOString(),
       status: testResult.status as Monitor["status"],
       statusDetail: testResult.statusDetail, remotePlan: testResult.remotePlan,
@@ -130,7 +126,7 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
     setAdding(false);
     setApiKey("");
     setTestResult(null);
-  }, [apiKey, selectedService, testResult, state, monitors, onCommit, services]);
+  }, [apiKey, selectedService, testResult, state, monitors, onCommit]);
 
   const removeMonitor = useCallback((monitorId: string) => {
     onCommit({ ...state, monitors: monitors.filter((m) => m.id !== monitorId) });
@@ -164,7 +160,7 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
   const refreshAll = useCallback(async () => {
     if (monitors.length === 0) return;
     const inputs: MonitorInput[] = monitors.map((m) => ({
-      id: m.id, catalogId: m.catalogId, serviceId: m.serviceId, apiKey: m.apiKey,
+      id: m.id, serviceId: m.serviceId, apiKey: m.apiKey,
     }));
     try {
       const results = await invoke<MonitorCheckResult[]>("check_all_monitors_cmd", { monitors: inputs });
@@ -217,15 +213,13 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
   return (
     <div className="modal" role="dialog" aria-modal aria-labelledby="monitor-title">
       <div className="modal__backdrop" onClick={onClose} />
-      <div className="modal__panel catalog-panel">
+      <div className="modal__panel modal__panel--wide">
         <div className="modal__head">
           <h2 id="monitor-title" className="modal__title">{t.title}</h2>
           <ModalCloseButton onClick={onClose} label={tFor(lang).common.close} />
         </div>
         <div className="modal__body">
-          <p className="catalog-hint" style={{ margin: "0 0 var(--space-3)" }}>
-            {t.desc}
-          </p>
+          <p className="modal-description">{t.desc}</p>
 
           {monitors.length > 0 && (
             <div className="monitor-list">
