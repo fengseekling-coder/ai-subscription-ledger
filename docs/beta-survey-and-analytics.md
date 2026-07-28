@@ -77,8 +77,8 @@
 
 | 事件 | 触发时机 | 属性 |
 |------|----------|------|
-| `subscription_add` | 新增一条 | `category`、`purchase_channel`、`billing_model` |
-| `subscription_edit` | 模态或表单保存 | `field`: category \| purchase_channel \| billing_model \| plan \| fee \| due_date \| … |
+| `subscription_add` | 新增一条 | `purchase_channel`、`billing_model` |
+| `subscription_edit` | 模态或表单保存 | `field`: purchase_channel \| billing_model \| plan \| fee \| due_date \| … |
 | `subscription_toggle_subscribed` | 切换已订阅 | `to`: true \| false |
 | `subscription_mark_expired` | 标记过期 | — |
 | `subscription_renew` | 点击已续费 | `has_bill`: bool |

@@ -1,16 +1,3 @@
-export const SUBSCRIPTION_CATEGORY_VALUES = [
-  "AI 服务",
-  "开发工具",
-  "云服务 / VPS",
-  "域名 / 网络",
-  "设计创作",
-  "办公协作",
-  "影音娱乐",
-  "其他",
-] as const;
-
-export type SubscriptionCategory = (typeof SUBSCRIPTION_CATEGORY_VALUES)[number];
-
 export const PURCHASE_CHANNEL_VALUES = ["官方", "中转"] as const;
 export type PurchaseChannel = (typeof PURCHASE_CHANNEL_VALUES)[number];
 
@@ -19,7 +6,7 @@ export type BillingModel = (typeof BILLING_MODEL_VALUES)[number];
 
 const LEGACY_CATEGORY_DEFAULTS: Record<
   string,
-  { category: SubscriptionCategory; purchaseChannel: PurchaseChannel; billingModel: BillingModel }
+  { category: string; purchaseChannel: PurchaseChannel; billingModel: BillingModel }
 > = {
   官方: { category: "AI 服务", purchaseChannel: "官方", billingModel: "月付" },
   中转: { category: "AI 服务", purchaseChannel: "中转", billingModel: "月付" },

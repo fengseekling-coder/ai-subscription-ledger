@@ -188,7 +188,7 @@ OCR 提取文字
 
 从不同渠道导入可能产生重复订阅。
 
-**改法：** 按 `plan + category + purchaseChannel` 提示可能重复，始终由用户决定是否保留。
+**改法：** 按 `plan + purchaseChannel` 提示可能重复，始终由用户决定是否保留。
 
 ---
 

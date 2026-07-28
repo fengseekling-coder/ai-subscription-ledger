@@ -21,7 +21,6 @@ import { resolveLang, tFor } from "./i18n";
 import {
   BILLING_MODEL_VALUES,
   PURCHASE_CHANNEL_VALUES,
-  SUBSCRIPTION_CATEGORY_VALUES,
   billingModelNeedsDueDate,
   formDefaultsFromCategory,
   type BillingModel,
@@ -53,7 +52,6 @@ function extractFields(
   usage?: string;
   subscribedAt?: string;
   dueDate?: string;
-  category?: string;
   matchedSubId?: string;
   matchedPlan?: string;
 } {
@@ -63,7 +61,6 @@ function extractFields(
     usage?: string;
     subscribedAt?: string;
     dueDate?: string;
-    category?: string;
     matchedSubId?: string;
     matchedPlan?: string;
   } = {};
@@ -100,7 +97,6 @@ function extractFields(
       if (row.plan) out.plan = String(row.plan);
       if (row.fee) out.fee = String(row.fee);
       if (row.usage) out.usage = String(row.usage);
-      if (row.category) out.category = String(row.category);
     }
   } catch {
     /* not JSON */
@@ -119,7 +115,6 @@ function extractFields(
     if (!out.plan && row.plan) out.plan = row.plan;
     if (!out.fee && row.fee) out.fee = String(row.fee);
     if (!out.usage && row.usage) out.usage = row.usage;
-    if (!out.category && row.category) out.category = row.category;
   }
 
   // 直接正则补充
@@ -151,9 +146,6 @@ function extractFields(
     if (exactMatch) {
       out.matchedSubId = exactMatch.id;
       out.matchedPlan = exactMatch.plan;
-      if (!out.category || out.category === "官方") {
-        out.category = exactMatch.category;
-      }
       if (!out.fee) {
         out.fee = exactMatch.fee;
       }
@@ -167,9 +159,6 @@ function extractFields(
       if (partialMatch) {
         out.matchedSubId = partialMatch.id;
         out.matchedPlan = partialMatch.plan;
-        if (!out.category || out.category === "官方") {
-          out.category = partialMatch.category;
-        }
         if (!out.fee) {
           out.fee = partialMatch.fee;
         }
@@ -231,16 +220,14 @@ export function SubscriptionFormModal({
   const [feeError, setFeeError] = useState<string | null>(null);
   const [subscribedChecked, setSubscribedChecked] = useState(draft.subscribed);
   const legacyConcepts = formDefaultsFromCategory(draft.category);
-  const initialConcepts = {
-    category: legacyConcepts.category,
-    purchaseChannel: draft.purchaseChannel ?? legacyConcepts.purchaseChannel,
-    billingModel: draft.billingModel ?? legacyConcepts.billingModel,
-  };
-  const [category, setCategory] = useState(initialConcepts.category);
+  // New entries share one default category. Existing entries retain their historical value.
+  const category = isAdd ? "AI 服务" : legacyConcepts.category;
   const [purchaseChannel, setPurchaseChannel] = useState<PurchaseChannel>(
-    initialConcepts.purchaseChannel
+    draft.purchaseChannel ?? legacyConcepts.purchaseChannel
   );
-  const [billingModel, setBillingModel] = useState<BillingModel>(initialConcepts.billingModel);
+  const [billingModel, setBillingModel] = useState<BillingModel>(
+    draft.billingModel ?? legacyConcepts.billingModel
+  );
   const dueDateRequired = billingModelNeedsDueDate(billingModel);
 
   // 切换新增/编辑目标时重置整个表单。React 推荐的写法是让父组件传 key 强制重挂，
@@ -249,13 +236,11 @@ export function SubscriptionFormModal({
   useEffect(() => {
     const legacyDefaults = formDefaultsFromCategory(draft.category);
     const nextConcepts = {
-      category: legacyDefaults.category,
       purchaseChannel: draft.purchaseChannel ?? legacyDefaults.purchaseChannel,
       billingModel: draft.billingModel ?? legacyDefaults.billingModel,
     };
     setMatchedSub(null);
     setSubscribedChecked(draft.subscribed);
-    setCategory(nextConcepts.category);
     setPurchaseChannel(nextConcepts.purchaseChannel);
     setBillingModel(nextConcepts.billingModel);
     setSubDate(draft.subscribedAt);
@@ -284,9 +269,6 @@ export function SubscriptionFormModal({
         if (fields.matchedSubId && fields.matchedPlan) {
           setPasteText(ocrText);
           setMatchedSub({ id: fields.matchedSubId, plan: fields.matchedPlan });
-          if (fields.category) {
-            setCategory(fields.category);
-          }
           if (fields.fee) {
             const el = formRef.current?.elements.namedItem(
               "fee"
@@ -374,11 +356,6 @@ export function SubscriptionFormModal({
         filled++;
       }
     }
-    if (fields.category) {
-      setCategory(fields.category);
-      filled++;
-    }
-
     if (filled > 0) {
       showModalNotice(ft.form.filled(filled));
       setPasteText("");
@@ -495,15 +472,9 @@ export function SubscriptionFormModal({
                 return;
               }
 
-              const category = String(fd.get("category") ?? "").trim();
               const plan = String(fd.get("plan") ?? "").trim();
               const fee = String(fd.get("fee") ?? "").trim();
 
-              if (!category) {
-                showModalNotice(ft.form.categoryRequired, true);
-                setIsSubmitting(false);
-                return;
-              }
               if (!plan) {
                 showModalNotice(ft.form.planRequired, true);
                 setIsSubmitting(false);
@@ -671,32 +642,6 @@ export function SubscriptionFormModal({
             )}
 
             <section className="form-section">
-              <div className="form-section__title">{ft.form.basic}</div>
-              <div className="form-field">
-                <label id="sub-category-label">{ft.form.category}</label>
-                <input type="hidden" name="category" value={category} />
-                <div
-                  className="category-chip-group"
-                  role="radiogroup"
-                  aria-labelledby="sub-category-label"
-                >
-                  {SUBSCRIPTION_CATEGORY_VALUES.map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      role="radio"
-                      aria-checked={category === value}
-                      className={`category-chip${
-                        category === value ? " is-selected" : ""
-                      }`}
-                      onClick={() => setCategory(value)}
-                    >
-                      {ft.form.categoryOptions[value]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               <div className="form-row form-row--concepts">
                 <div className="form-field">
                   <label htmlFor="sub-purchase-channel">{ft.form.purchaseChannel}</label>

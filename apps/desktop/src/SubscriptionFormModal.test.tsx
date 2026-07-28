@@ -92,7 +92,6 @@ describe("标题与副标题", () => {
   it("英文模式下标题与字段标签都翻译", () => {
     setup({ language: "en" });
     expect(screen.getByRole("heading", { name: "Add subscription" })).toBeInTheDocument();
-    expect(screen.getByText("Purpose")).toBeInTheDocument();
     expect(screen.getByLabelText("Purchase channel")).toBeInTheDocument();
     expect(screen.getByLabelText("Billing model")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add" })).toBeInTheDocument();
@@ -100,25 +99,13 @@ describe("标题与副标题", () => {
   });
 });
 
-describe("用途分类、购买渠道与计费方式", () => {
-  it("中文模式显示中文标签", () => {
-    setup();
-    for (const label of ["AI 服务", "开发工具", "云服务 / VPS", "设计创作", "其他"]) {
-      expect(screen.getByRole("radio", { name: label })).toBeInTheDocument();
-    }
-  });
-
-  it("英文模式显示英文标签", () => {
-    setup({ language: "en" });
-    for (const label of ["AI services", "Developer tools", "Cloud / VPS", "Design & creation", "Other"]) {
-      expect(screen.getByRole("radio", { name: label })).toBeInTheDocument();
-    }
-  });
-
+describe("购买渠道与计费方式", () => {
   it("英文界面提交时仍写入稳定的中文数据值", async () => {
-    const { onCommit } = setup({ language: "en" });
+    const { onCommit } = setup({
+      language: "en",
+      draft: { category: "开发工具" },
+    });
 
-    await userEvent.click(screen.getByRole("radio", { name: "Developer tools" }));
     await userEvent.selectOptions(screen.getByLabelText("Purchase channel"), "中转");
     await userEvent.selectOptions(screen.getByLabelText("Billing model"), "年付");
     await userEvent.type(screen.getByLabelText("Plan / credits"), "My Relay");
@@ -127,7 +114,7 @@ describe("用途分类、购买渠道与计费方式", () => {
     await waitFor(() => expect(onCommit).toHaveBeenCalled());
     const next = onCommit.mock.calls[0][0] as AppState;
     const added = next.rows[next.rows.length - 1];
-    expect(added.category).toBe("开发工具");
+    expect(added.category).toBe("AI 服务");
     expect(added.purchaseChannel).toBe("中转");
     expect(added.billingModel).toBe("年付");
     expect(added.plan).toBe("My Relay");
@@ -136,7 +123,6 @@ describe("用途分类、购买渠道与计费方式", () => {
   it("额度包无需续费日期", async () => {
     const { onCommit } = setup();
 
-    await userEvent.click(screen.getByRole("radio", { name: "AI 服务" }));
     await userEvent.selectOptions(screen.getByLabelText("计费方式"), "额度包");
     expect(screen.getByText("续费日期")).toBeInTheDocument();
     expect(screen.getByText("此计费方式无需续费日期")).toBeInTheDocument();
@@ -148,6 +134,21 @@ describe("用途分类、购买渠道与计费方式", () => {
     expect(added.category).toBe("AI 服务");
     expect(added.billingModel).toBe("额度包");
     expect(added.dueDate).toBe("");
+  });
+
+  it("编辑时保留已有订阅的用途分类", async () => {
+    const state = ledger([{ category: "开发工具", plan: "Cursor Pro" }]);
+    const { onCommit } = setup({
+      mode: "edit",
+      state,
+      editIndex: 0,
+      editRow: state.rows[0],
+      draft: state.rows[0],
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onCommit).toHaveBeenCalled());
+    expect((onCommit.mock.calls[0][0] as AppState).rows[0].category).toBe("开发工具");
   });
 });
 

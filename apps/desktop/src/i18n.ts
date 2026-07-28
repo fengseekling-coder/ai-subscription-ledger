@@ -65,8 +65,6 @@ export type Dict = {
     parseText: string;
     parseOcr: string;
     parsing: string;
-    basic: string;
-    category: string;
     categoryOptions: Record<
       | "AI 服务"
       | "开发工具"
@@ -105,7 +103,6 @@ export type Dict = {
     saving: string;
     matched: (plan: string) => string;
     feeError: string;
-    categoryRequired: string;
     planRequired: string;
     subDateInvalid: string;
     dueDateInvalid: string;
@@ -312,8 +309,6 @@ const zh: Dict = {
     parseText: "解析文字",
     parseOcr: "粘贴图片 OCR",
     parsing: "识别中…",
-    basic: "基本信息",
-    category: "用途分类",
     categoryOptions: {
       "AI 服务": "AI 服务",
       "开发工具": "开发工具",
@@ -359,7 +354,6 @@ const zh: Dict = {
     saving: "保存中…",
     matched: (plan) => `已匹配「${plan}」，确认后将为其添加账单`,
     feeError: "金额格式无效",
-    categoryRequired: "请选择分类",
     planRequired: "请填写套餐名称",
     subDateInvalid: "订阅日期格式无效",
     dueDateInvalid: "续费日期格式无效",
@@ -567,8 +561,6 @@ const en: Dict = {
     parseText: "Parse text",
     parseOcr: "Paste image (OCR)",
     parsing: "Reading…",
-    basic: "Basics",
-    category: "Purpose",
     categoryOptions: {
       "AI 服务": "AI services",
       "开发工具": "Developer tools",
@@ -614,7 +606,6 @@ const en: Dict = {
     saving: "Saving…",
     matched: (plan) => `Matched “${plan}” — submitting will add a bill to it`,
     feeError: "Invalid amount",
-    categoryRequired: "Pick a category",
     planRequired: "Enter a plan name",
     subDateInvalid: "Invalid subscription date",
     dueDateInvalid: "Invalid renewal date",
