@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: desktop_app/frontend_app/shared_components
+title: 桌面端共享 UI 组件库
+scope:
+    - apps/desktop/src/SubTable.tsx
+    - apps/desktop/src/ui/
+    - apps/desktop/src/CalendarPicker.tsx
+source_files: []
+depends_on: []
+related_to:
+    - path: core_library

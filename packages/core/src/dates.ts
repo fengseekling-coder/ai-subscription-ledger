@@ -1,3 +1,4 @@
+/** 格式化日期为 YYYY-MM-DD 格式 */
 export function formatDate(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -5,15 +6,23 @@ export function formatDate(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+/** 获取今天的 ISO 日期字符串 (YYYY-MM-DD) */
 export function todayLocalISO(): string {
   const n = new Date();
   return formatDate(new Date(n.getFullYear(), n.getMonth(), n.getDate()));
 }
 
+/** 获取当前月份键 (YYYY-MM 格式) */
 export function currentMonthKey(ref = new Date()): string {
   return `${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, "0")}`;
 }
 
+/**
+ * 计算距离到期日还有多少天（向上取整）
+ * @param iso 到期日的 ISO 日期字符串 (YYYY-MM-DD)
+ * @param ref 参考日期（默认今天）
+ * @returns 剩余天数，如果 iso 为空则返回 null
+ */
 export function daysUntil(iso: string | undefined | null, ref = new Date()): number | null {
   if (!iso) return null;
   // Parse iso as local noon to anchor both dates to the same timezone reference.

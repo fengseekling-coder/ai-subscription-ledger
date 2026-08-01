@@ -2,11 +2,14 @@
 
 纯订阅/会员账本：订阅、账单、续费提醒、预算统计。业务规则在 `@ai-sub/core`，桌面端与 core demo/parity 摘要保持同一统计口径。
 
-## 当前版本：0.1.3
+## 当前版本：0.2.0
 
-- 订阅可手动填写，或通过订单文本、JSON 与剪贴板图片 OCR 快速填充。
-- 新建订阅固定归为 AI 服务；已有用途分类保留用于历史统计。购买渠道和计费方式可编辑；月付和年付才参与续费提醒，按量计费与额度包无需续费日。
-- 旧账本中的「官方 / 中转 / 中转额度包」会在读取时自动迁移到新字段。
+- **新增**：Windows 平台原生支持（MSI、NSIS 安装包）
+- **新增**：跨平台 OCR 引擎（macOS Vision.framework + Windows tesseract-rs）
+- **新增**：完整的测试覆盖（77 个单元测试全部通过）
+- **优化**：日期计算修复（PendingView/SubTable 日期处理）
+- **优化**：UI 组件完善（ModalShell、CalendarPicker 等新组件）
+- **优化**：核心文档完善（完整的 Windows 构建指南和开发文档）
 
 ## 许可
 
@@ -14,15 +17,29 @@
 
 许可协议：PolyForm Noncommercial License 1.0.0，见 [LICENSE](./LICENSE)。
 
-## 下载安装（macOS）
+## 下载安装
 
-不想自己编译，直接去 [Releases](../../releases/latest) 下载最新 `订阅账本_*.dmg`，打开后把 App 拖进 `/Applications`。
+不想自己编译？根据您的操作系统下载对应的安装包：
+
+### macOS
+
+前往 [Releases](../../releases/latest) 下载最新 `订阅账本_*.dmg`，打开后把 App 拖进 `/Applications`。
 
 > **首次打开被系统拦截？** 本项目未购买 Apple 开发者证书（$99/年），dmg 是未公证的 ad-hoc 签名，macOS 会提示"无法验证开发者"。这是正常现象，不是文件损坏：
 > - **右键点击** App → 选择「打开」→ 弹窗里再点一次「打开」；或
 > - 「系统设置」→「隐私与安全性」，往下翻会看到一条阻止提示，点「仍要打开」。
 >
 > 只需在第一次打开时做一次，之后正常双击即可。
+
+### Windows
+
+前往 [Releases](../../releases/latest) 下载：
+- `.msi` - Windows Installer Package（适合企业批量部署）
+- `.exe` - NSIS 安装向导（用户友好型）
+
+双击运行安装包完成安装后即可使用。
+
+---
 
 ## 要求
 

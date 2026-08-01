@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: desktop_app/tauri_backend
+title: Tauri 桌面后端（订阅账本 Rust 层）
+scope:
+    - apps/desktop/src-tauri/
+source_files: []
+depends_on: []
+related_to:
+    - path: desktop_app/frontend_app/app_shell
+    - path: desktop_app/frontend_app/modals
+    - path: desktop_app/frontend_app/persistence_hooks

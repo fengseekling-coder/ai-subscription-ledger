@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: desktop_app/frontend_app/views
+title: 桌面端仪表盘视图组件
+scope:
+    - apps/desktop/src/Dashboard.tsx
+    - apps/desktop/src/BillsView.tsx
+    - apps/desktop/src/PendingView.tsx
+    - apps/desktop/src/StatsView.tsx
+source_files: []
+depends_on: []
+related_to:
+    - path: core_library

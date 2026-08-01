@@ -5,10 +5,10 @@ import {
   type AppState,
   type BillDraft,
 } from "@ai-sub/core";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { CalendarPicker } from "./CalendarPicker";
 import { resolveLang, tFor } from "./i18n";
-import { ModalCloseButton } from "./ui/Icon";
+import { FormFooter, ModalShell } from "./ui/ModalShell";
 
 type Props = {
   /** add：新增一笔；edit：编辑已有账单（billId 必填） */
@@ -30,14 +30,6 @@ export function BillFormModal({ mode, billId, draft, state, onClose, onCommit, o
   const [orderId, setOrderId] = useState(draft.orderId);
   const [note, setNote] = useState(draft.note);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   // 下拉里按主列表同样的顺序排（在用的靠前），便于快速找到目标订阅。
   const options = useMemo(
@@ -65,22 +57,16 @@ export function BillFormModal({ mode, billId, draft, state, onClose, onCommit, o
   };
 
   return (
-    <div className="modal" role="dialog" aria-modal>
-      <div className="modal__backdrop" onClick={onClose} />
-      <div className="modal__panel" style={{ maxWidth: 460 }}>
-        <div className="modal__head">
-          <h2 className="modal__title">{mode === "edit" ? t.formEditTitle : t.formAddTitle}</h2>
-          <ModalCloseButton onClick={onClose} label={tFor(resolveLang(language)).common.close} />
-        </div>
-        <form
-          className="modal__body"
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit();
-          }}
-        >
-          <div className="form-field">
-            <label htmlFor="bill-sub">{t.fieldSub}</label>
+    <ModalShell title={mode === "edit" ? t.formEditTitle : t.formAddTitle} onClose={onClose}>
+      <form
+        className="modal__body"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        <div className="form-field">
+          <label htmlFor="bill-sub">{t.fieldSub}</label>
             <select
               id="bill-sub"
               className="select"
@@ -154,18 +140,8 @@ export function BillFormModal({ mode, billId, draft, state, onClose, onCommit, o
             </span>
           )}
 
-          <div className="modal__foot">
-            <button type="button" onClick={onClose}>
-              {t.cancel}
-            </button>
-            <div className="modal__foot-actions">
-              <button type="submit" className="primary">
-                {mode === "edit" ? t.save : t.add}
-              </button>
-            </div>
-          </div>
+      <FormFooter onCancel={onClose} submitLabel={mode === "edit" ? t.save : t.add} />
         </form>
-      </div>
-    </div>
+      </ModalShell>
   );
 }

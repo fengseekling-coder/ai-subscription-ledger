@@ -2,6 +2,7 @@
  * Unified date utilities shared between CalendarPicker and core dates module
  * Centralizes date formatting, parsing, and conversion to avoid code duplication
  */
+import { formatDate as _formatISO } from "@ai-sub/core";
 
 /**
  * Convert ISO date string (YYYY-MM-DD) to Date object
@@ -21,6 +22,7 @@ export function dateToIso(date: Date): string {
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
+
 
 /**
  * Format date for display in Chinese locale

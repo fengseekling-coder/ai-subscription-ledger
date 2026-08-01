@@ -132,25 +132,36 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
     onCommit({ ...state, monitors: monitors.filter((m) => m.id !== monitorId) });
   }, [state, monitors, onCommit]);
 
+  /** 从 result → updated Monitor */
+  const updateMonitorFromResult = (monitor: Monitor, result: MonitorCheckResult, now: string): Monitor => ({
+    ...monitor,
+    lastChecked: now,
+    status: result.status as Monitor["status"],
+    statusDetail: result.statusDetail,
+    remotePlan: result.remotePlan,
+    remoteAmount: result.remoteAmount,
+    remoteRenewalDate: result.remoteRenewalDate,
+    errorMessage: result.errorMessage,
+  });
+
+  /** 更新单个 monitor，错误处理统一返回带错误状态的 Monitor */
+  const updateMonitorOnError = (monitor: Monitor, e: unknown, now: string): Monitor => ({
+    ...monitor,
+    lastChecked: now,
+    status: "error" as const,
+    errorMessage: e instanceof Error ? e.message : String(e),
+  });
+
   const refreshMonitor = useCallback(async (monitor: Monitor) => {
     setCheckingId(monitor.id);
     try {
       const result = await invoke<MonitorCheckResult>("check_monitor_cmd", {
         monitorId: monitor.id, serviceId: monitor.serviceId, apiKey: monitor.apiKey,
       });
-      const updated: Monitor = {
-        ...monitor, lastChecked: new Date().toISOString(),
-        status: result.status as Monitor["status"],
-        statusDetail: result.statusDetail, remotePlan: result.remotePlan,
-        remoteAmount: result.remoteAmount, remoteRenewalDate: result.remoteRenewalDate,
-        errorMessage: result.errorMessage,
-      };
+      const updated = updateMonitorFromResult(monitor, result, new Date().toISOString());
       onCommit({ ...state, monitors: monitors.map((m) => (m.id === monitor.id ? updated : m)) });
     } catch (e) {
-      const updated: Monitor = {
-        ...monitor, lastChecked: new Date().toISOString(), status: "error" as const,
-        errorMessage: e instanceof Error ? e.message : String(e),
-      };
+      const updated = updateMonitorOnError(monitor, e, new Date().toISOString());
       onCommit({ ...state, monitors: monitors.map((m) => (m.id === monitor.id ? updated : m)) });
     } finally {
       setCheckingId(null);
@@ -168,12 +179,7 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
       const updatedMonitors = monitors.map((m) => {
         const r = results.find((x) => x.monitorId === m.id);
         if (!r) return m;
-        return {
-          ...m, lastChecked: now, status: r.status as Monitor["status"],
-          statusDetail: r.statusDetail, remotePlan: r.remotePlan,
-          remoteAmount: r.remoteAmount, remoteRenewalDate: r.remoteRenewalDate,
-          errorMessage: r.errorMessage,
-        };
+        return updateMonitorFromResult(m, r, now);
       });
       onCommit({ ...state, monitors: updatedMonitors });
     } catch {
@@ -192,17 +198,12 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
             r.status === "fulfilled" && r.value.monitor.id === m.id
         );
         if (!settled) {
-          return { ...m, lastChecked: now, status: "error" as const, // 不本地化：errorMessage 是会被持久化的数据，且同一字段的其他取值来自
-            // Rust 后端（本身就是中文），只翻这一个 JS 兜底反而不一致。
-            errorMessage: "请求失败" };
+          // 不本地化：errorMessage 是会被持久化的数据，且同一字段的其他取值来自
+          // Rust 后端（本身就是中文），只翻这一个 JS 兜底反而不一致。
+          return updateMonitorOnError(m, Error("请求失败"), now);
         }
         const { result } = settled.value;
-        return {
-          ...m, lastChecked: now, status: result.status as Monitor["status"],
-          statusDetail: result.statusDetail, remotePlan: result.remotePlan,
-          remoteAmount: result.remoteAmount, remoteRenewalDate: result.remoteRenewalDate,
-          errorMessage: result.errorMessage,
-        };
+        return updateMonitorFromResult(m, result, now);
       });
       onCommit({ ...state, monitors: updatedMonitors });
     }

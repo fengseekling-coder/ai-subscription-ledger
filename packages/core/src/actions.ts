@@ -4,6 +4,14 @@ import { normalizeBill, normalizeRow } from "./normalize.js";
 import { isActiveSubscription, needsDueDate } from "./rules.js";
 import type { AppState, Bill, SubscriptionRow } from "./types.js";
 
+/** 索引边界校验，通过则返回 rows 副本，否则返回错误。 */
+function guardIndex(state: AppState, index: number): { rows: SubscriptionRow[] } | { error: string } {
+  if (index < 0 || index >= state.rows.length) {
+    return { error: "索引超出范围" };
+  }
+  return { rows: state.rows.slice() };
+}
+
 export function subById(state: AppState, id: string): SubscriptionRow | undefined {
   return state.rows.find((r) => r.id === id);
 }
@@ -52,11 +60,10 @@ export function updateRowField(
   key: keyof SubscriptionRow,
   value: string
 ): AppState | { error: string } {
-  if (index < 0 || index >= state.rows.length) {
-    return { error: "索引超出范围" };
-  }
+  const g = guardIndex(state, index);
+  if ("error" in g) return g;
   const raw = String(value).trim();
-  const rows = state.rows.slice();
+  const rows = g.rows;
   let row: SubscriptionRow;
   if (key === "subscribed" || key === "expired") {
     // 布尔字段需转回 boolean，避免 UI 的 string 值把字段污染成字符串
@@ -72,19 +79,17 @@ export function updateRowField(
 }
 
 export function updateRow(state: AppState, index: number, patch: Partial<SubscriptionRow>): AppState | { error: string } {
-  if (index < 0 || index >= state.rows.length) {
-    return { error: "索引超出范围" };
-  }
-  const rows = state.rows.slice();
+  const g = guardIndex(state, index);
+  if ("error" in g) return g;
+  const rows = g.rows;
   rows[index] = normalizeRow({ ...rows[index], ...patch });
   return { ...state, rows };
 }
 
 export function toggleSubscribe(state: AppState, index: number, ref = new Date()): AppState | { error: string } {
-  if (index < 0 || index >= state.rows.length) {
-    return { error: "索引超出范围" };
-  }
-  const rows = state.rows.slice();
+  const g = guardIndex(state, index);
+  if ("error" in g) return g;
+  const rows = g.rows;
   const row = { ...rows[index] };
   row.subscribed = !row.subscribed;
   if (!row.subscribed) {
@@ -113,9 +118,8 @@ export function pickDueDate(
   rawInput: string | null,
   ref = new Date()
 ): { state: AppState } | { error: string } {
-  if (index < 0 || index >= state.rows.length) {
-    return { error: "索引超出范围" };
-  }
+  const g = guardIndex(state, index);
+  if ("error" in g) return g;
   if (rawInput === null) return { state };
   const iso = normalizeDateInput(rawInput, ref);
   if (iso === null) return { error: "日期格式请使用 YYYY-MM-DD" };
@@ -125,28 +129,25 @@ export function pickDueDate(
 }
 
 export function markExpired(state: AppState, index: number): AppState | { error: string } {
-  if (index < 0 || index >= state.rows.length) {
-    return { error: "索引超出范围" };
-  }
-  const rows = state.rows.slice();
+  const g = guardIndex(state, index);
+  if ("error" in g) return g;
+  const rows = g.rows;
   if (!rows[index].subscribed) return state;
   rows[index] = { ...rows[index], expired: true };
   return { ...state, rows };
 }
 
 export function clearExpired(state: AppState, index: number): AppState | { error: string } {
-  if (index < 0 || index >= state.rows.length) {
-    return { error: "索引超出范围" };
-  }
-  const rows = state.rows.slice();
+  const g = guardIndex(state, index);
+  if ("error" in g) return g;
+  const rows = g.rows;
   rows[index] = { ...rows[index], expired: false };
   return { ...state, rows };
 }
 
 export function deleteRow(state: AppState, index: number): AppState | { error: string } {
-  if (index < 0 || index >= state.rows.length) {
-    return { error: "索引超出范围" };
-  }
+  const g = guardIndex(state, index);
+  if ("error" in g) return g;
   const row = state.rows[index];
   const rows = state.rows.filter((_, i) => i !== index);
   const bills = state.bills.filter((b) => b.subscriptionId !== row.id);
@@ -161,10 +162,9 @@ export function markUnrenewed(state: AppState, index: number, choice: "delete" |
 }
 
 export function renewRow(state: AppState, index: number, ref = new Date()): AppState | { error: string } {
-  if (index < 0 || index >= state.rows.length) {
-    return { error: "索引超出范围" };
-  }
-  const rows = state.rows.slice();
+  const g = guardIndex(state, index);
+  if ("error" in g) return g;
+  const rows = g.rows;
   const prevDue = rows[index].dueDate;
   const intervalMonths = rows[index].billingModel === "年付" ? 12 : 1;
   rows[index] = normalizeRow({

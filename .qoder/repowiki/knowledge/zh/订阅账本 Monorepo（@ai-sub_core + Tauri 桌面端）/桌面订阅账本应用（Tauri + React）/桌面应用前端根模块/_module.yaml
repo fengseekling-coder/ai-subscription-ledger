@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: desktop_app/frontend_app
+title: 桌面应用前端根模块
+scope:
+    - apps/desktop/src/
+source_files: []
+depends_on: []
+related_to: []

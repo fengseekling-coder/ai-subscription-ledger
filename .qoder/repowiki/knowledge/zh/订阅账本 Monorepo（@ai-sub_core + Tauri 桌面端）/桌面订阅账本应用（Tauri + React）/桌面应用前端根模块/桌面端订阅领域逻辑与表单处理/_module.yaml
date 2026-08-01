@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: desktop_app/frontend_app/domain_logic
+title: 桌面端订阅领域逻辑与表单处理
+scope:
+    - apps/desktop/src/categoryLabel.ts
+    - apps/desktop/src/subscriptionFields.ts
+    - apps/desktop/src/subTableHandlers.ts
+source_files: []
+depends_on: []
+related_to:
+    - path: core_library

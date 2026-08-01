@@ -113,7 +113,47 @@ pub fn ocr_image_rgba(rgba: &[u8], width: usize, height: usize) -> Result<String
     }
 }
 
-#[cfg(not(target_os = "macos"))]
-pub fn ocr_image_rgba(_rgba: &[u8], _width: usize, _height: usize) -> Result<String, String> {
-    Err("OCR 仅支持 macOS".to_string())
+/// OCR image processing using Tesseract on Windows
+#[cfg(target_os = "windows")]
+pub fn ocr_image_rgba(rgba: &[u8], width: usize, height: usize) -> Result<String, String> {
+    use std::io::Cursor;
+
+    // Convert RGBA to RGB (discard alpha channel)
+    let rgb_data:
+        Vec<u8> = rgba
+            .chunks_exact(4)
+            .flat_map(|chunk| [chunk[0], chunk[1], chunk[2]])
+            .collect();
+
+    // Create image from bytes
+    let img = image::RgbImage(
+        width,
+        height,
+        rgb_data.into(),
+    ).ok_or_else(|| "无法创建图像".to_string())?;
+
+    // Save to temporary buffer for tesseract
+    let mut cursor = Cursor::new(Vec::new());
+    img.write_to(&mut cursor, image::ImageFormat::Png)
+        .map_err(|e| format!("保存临时图像失败：{}", e))?;
+
+    let data = cursor.into_inner();
+    
+    // Initialize tesseract
+    let mut handle = tesseract::Tesseract::new()
+        .lang("chi_sim")
+        .data_dir("/usr/share/tesseract-ocr/5/tessdata/")
+        .build()
+        .map_err(|e| format!("初始化 Tesseract 失败：{}", e))?;
+
+    // Perform OCR
+    let text = handle
+        .recognize(&data)
+        .map_err(|e| format!("OCR 识别失败：{}", e))?;
+
+    if text.is_empty() {
+        Err("未识别到文字".to_string())
+    } else {
+        Ok(text.trim().to_string())
+    }
 }

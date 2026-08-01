@@ -4,6 +4,8 @@ import { userEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { SubTable, type SubTableHandlers } from "./SubTable";
 
+const REF_DATE = new Date("2026-07-31T10:00:00"); // 固定参考日期
+
 function handlers(): SubTableHandlers {
   return {
     onToggle: vi.fn(),
@@ -38,9 +40,9 @@ function ledger(rows: Partial<SubscriptionRow>[]): AppState {
   });
 }
 
-/** 相对今天偏移的 ISO 日期，让「剩余 N 天」在任何一天跑都稳定。 */
+/** 相对固定参考日期的 ISO 日期，让「剩余 N 天」在任何一天跑都稳定。 */
 function iso(offsetDays: number): string {
-  const d = new Date();
+  const d = new Date(REF_DATE);
   d.setDate(d.getDate() + offsetDays);
   return d.toISOString().slice(0, 10);
 }
