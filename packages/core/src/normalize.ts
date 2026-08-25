@@ -28,7 +28,7 @@ const CATEGORIES = new Set<SubscriptionCategory>([
 ]);
 
 const PURCHASE_CHANNELS = new Set<PurchaseChannel>(["官方", "中转"]);
-const BILLING_MODELS = new Set<BillingModel>(["月付", "年付", "按量计费", "额度包"]);
+const BILLING_MODELS = new Set<BillingModel>(["月付", "季付", "年付", "按量计费", "额度包"]);
 
 function inferCategory(raw: string, plan: string, legacySegment: string): string {
   if (CATEGORIES.has(raw as SubscriptionCategory)) return raw;
@@ -73,6 +73,7 @@ function inferBillingModel(
   if (/按量|用量|pay.?as.?you.?go|usage/i.test(plan) || legacyCycle.includes("按量")) {
     return "按量计费";
   }
+  if (/季付|quarter/i.test(plan) || legacyCycle.includes("季")) return "季付";
   if (/年付|annual|year/i.test(plan) || legacyCycle.includes("年")) return "年付";
   return "月付";
 }
@@ -95,6 +96,7 @@ export function normalizeRow(row: RowInput): SubscriptionRow {
   r.plan = String(r.plan || "").trim();
   r.category = inferCategory(legacyCategory, r.plan, legacySegment);
   r.purchaseChannel = inferPurchaseChannel(r.purchaseChannel, legacyCategory, legacySegment);
+  r.provider = String(r.provider ?? "").trim();
   r.billingModel = inferBillingModel(
     r.billingModel,
     legacyCategory,
@@ -103,6 +105,7 @@ export function normalizeRow(row: RowInput): SubscriptionRow {
     legacyCycle
   );
   r.fee = String(r.fee ?? "").trim();
+  r.actualFee = String(r.actualFee ?? "").trim();
   r.usage = String(r.usage ?? "").trim();
   r.dueDate = String(r.dueDate ?? "").trim();
   r.subscribedAt = String(r.subscribedAt ?? "").slice(0, 10);

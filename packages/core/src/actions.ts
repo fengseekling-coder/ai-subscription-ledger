@@ -1,7 +1,7 @@
 import { formatDate, nextRecurringDueDate, normalizeDateInput } from "./dates.js";
 import { feeToCnyAmount, moneyValue } from "./money.js";
 import { normalizeBill, normalizeRow } from "./normalize.js";
-import { isActiveSubscription, needsDueDate } from "./rules.js";
+import { billingIntervalMonths, effectiveFee, isActiveSubscription, needsDueDate } from "./rules.js";
 import type { AppState, Bill, SubscriptionRow } from "./types.js";
 
 /** 索引边界校验，通过则返回 rows 副本，否则返回错误。 */
@@ -22,9 +22,11 @@ export function addRowWithDetails(
     SubscriptionRow,
     | "category"
     | "purchaseChannel"
+    | "provider"
     | "billingModel"
     | "plan"
     | "fee"
+    | "actualFee"
     | "usage"
     | "dueDate"
     | "subscribedAt"
@@ -39,9 +41,11 @@ export function addRowWithDetails(
   let row = normalizeRow({
     category: patch.category,
     purchaseChannel: patch.purchaseChannel,
+    provider: patch.provider,
     billingModel: patch.billingModel,
     plan,
     fee: patch.fee,
+    actualFee: patch.actualFee,
     usage: patch.usage,
     dueDate: patch.dueDate,
     subscribedAt: patch.subscribedAt,
@@ -166,7 +170,7 @@ export function renewRow(state: AppState, index: number, ref = new Date()): AppS
   if ("error" in g) return g;
   const rows = g.rows;
   const prevDue = rows[index].dueDate;
-  const intervalMonths = rows[index].billingModel === "年付" ? 12 : 1;
+  const intervalMonths = billingIntervalMonths(rows[index].billingModel);
   rows[index] = normalizeRow({
     ...rows[index],
     dueDate: nextRecurringDueDate(rows[index].dueDate, intervalMonths, ref),
@@ -174,7 +178,7 @@ export function renewRow(state: AppState, index: number, ref = new Date()): AppS
     expired: false,
   });
   const bills = [...state.bills];
-  const amt = feeToCnyAmount(rows[index].fee);
+  const amt = feeToCnyAmount(effectiveFee(rows[index]));
   if (amt > 0) {
     // 去重键与 paidAt 都必须来自同一个 ref。之前 dueDate 用 ref、这里用真实时钟，
     // 传入 ref 时「每月只记一笔续费」会对着错误的月份判重。
@@ -218,7 +222,7 @@ export function billDraftFor(state: AppState, ref = new Date()): BillDraft | { e
   const active = state.rows.filter((r) => isActiveSubscription(r, ref));
   const pick = active[0] || state.rows[0];
   if (!pick) return { error: "请先添加订阅，再记账单。" };
-  const amount = feeToCnyAmount(pick.fee);
+  const amount = feeToCnyAmount(effectiveFee(pick));
   return {
     subscriptionId: pick.id,
     amount: amount > 0 ? String(amount) : "",

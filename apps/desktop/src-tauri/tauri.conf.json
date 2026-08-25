@@ -31,6 +31,8 @@
   "bundle": {
     "active": true,
     "targets": [
+      "app",
+      "dmg",
       "msi",
       "nsis"
     ],
@@ -50,12 +52,10 @@
       "wix": {
         "language": "zh-CN",
         "template": "main.wxs"
+      },
+      "nsis": {
+        "installerIcon": "icons/icon.ico"
       }
-    },
-    "nsis": {
-      "installerIcon": "icons/icon.ico",
-      "sidebarImage": null,
-      "headerImage": null
     }
   },
   "mainBinaryName": "subscription-ledger"

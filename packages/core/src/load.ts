@@ -1,6 +1,7 @@
 import { defaultRowsSeed } from "./defaults.js";
 import { normalizeBill, normalizeRow } from "./normalize.js";
-import { moneyValue } from "./money.js";
+import { feeToCnyAmount } from "./money.js";
+import { effectiveFee } from "./rules.js";
 import type { AppState, Bill, Monitor, SubscriptionRow } from "./types.js";
 
 function parseUsagePaymentDate(row: SubscriptionRow): string {
@@ -25,8 +26,8 @@ function parseUsageToBill(row: SubscriptionRow): Bill | null {
     note = "激活码/订单";
   }
   if (!orderId && !paidAt) return null;
-  const amt = moneyValue(row.fee);
-  if (!paidAt) return null;
+  const amt = feeToCnyAmount(effectiveFee(row));
+  if (!(amt > 0) || !paidAt) return null;
   return normalizeBill({
     subscriptionId: row.id,
     amount: amt,
@@ -108,12 +109,13 @@ function normalizeMonitor(value: unknown): Monitor | null {
   };
 }
 
-function hydrateImportedState(parsed: {
+type ImportedLedger = {
   budget?: unknown;
   rows?: unknown[];
   bills?: unknown[];
-  monitors?: unknown[];
-}): AppState {
+};
+
+function hydrateLedger(parsed: ImportedLedger): Pick<AppState, "budget" | "rows" | "bills"> {
   const rows = (Array.isArray(parsed.rows) ? parsed.rows : []).map((r) =>
     normalizeRow(r as Partial<SubscriptionRow> & Record<string, unknown>)
   );
@@ -123,7 +125,17 @@ function hydrateImportedState(parsed: {
   );
   ensureSubscribedAtFromRows(rows, bills);
   const rawBudget = Number(parsed.budget);
-  const budget = Number.isFinite(rawBudget) && rawBudget >= 0 ? rawBudget : 500;
+  return {
+    budget: Number.isFinite(rawBudget) && rawBudget >= 0 ? rawBudget : 500,
+    rows,
+    bills,
+  };
+}
+
+function hydrateImportedState(parsed: ImportedLedger & {
+  monitors?: unknown[];
+}): AppState {
+  const overview = hydrateLedger(parsed);
   const language: AppState["language"] = (() => {
     const raw = (parsed as { language?: unknown }).language;
     return raw === "zh-CN" || raw === "en" || raw === "auto" ? raw : "auto";
@@ -134,9 +146,7 @@ function hydrateImportedState(parsed: {
         .filter((monitor): monitor is Monitor => monitor !== null)
     : [];
   return {
-    budget,
-    rows,
-    bills,
+    ...overview,
     monitors,
     language,
   };

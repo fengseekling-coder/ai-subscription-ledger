@@ -1,6 +1,7 @@
 import {
   addBillWithDetails,
   updateBillDetails,
+  effectiveFee,
   sortRowEntries,
   type AppState,
   type BillDraft,
@@ -34,10 +35,13 @@ export function BillFormModal({ mode, billId, draft, state, onClose, onCommit, o
   // 下拉里按主列表同样的顺序排（在用的靠前），便于快速找到目标订阅。
   const options = useMemo(
     () =>
-      sortRowEntries(state.rows.map((row, index) => ({ row, index }))).map(({ row }) => ({
-        id: row.id,
-        label: row.fee ? `${row.plan} · ${row.fee}` : row.plan,
-      })),
+      sortRowEntries(state.rows.map((row, index) => ({ row, index }))).map(({ row }) => {
+        const ef = effectiveFee(row);
+        return {
+          id: row.id,
+          label: ef ? `${row.plan} · ${ef}` : row.plan,
+        };
+      }),
     [state.rows]
   );
 

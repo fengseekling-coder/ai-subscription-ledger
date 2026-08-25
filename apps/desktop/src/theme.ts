@@ -36,28 +36,28 @@ export const ACCENT_ORDER: AccentKey[] = [
 
 export const ACCENTS: Record<AccentKey, AccentPreset> = {
   green: {
-    light: { accent: "#0f7b3f", hover: "#0b6534", on: "#ffffff", soft: "rgba(15,123,63,0.09)", muted: "#e2efe7", ink: "#0b5c30" },
-    dark: { accent: "#3fbf74", hover: "#55cc86", on: "#06281a", soft: "rgba(63,191,116,0.14)", muted: "#183727", ink: "#7fd6a4" },
+    light: { accent: "#00b14f", hover: "#00c95d", on: "#ffffff", soft: "rgba(0,177,79,0.10)", muted: "#dcf8e8", ink: "#00803a" },
+    dark: { accent: "#3df08c", hover: "#5ff5a3", on: "#032712", soft: "rgba(61,240,140,0.15)", muted: "#12331f", ink: "#8af7b8" },
   },
   blue: {
-    light: { accent: "#2563eb", hover: "#1d4ed8", on: "#ffffff", soft: "rgba(37,99,235,0.10)", muted: "#e6edfb", ink: "#1e40af" },
-    dark: { accent: "#5b8def", hover: "#7aa3f2", on: "#0b1c3a", soft: "rgba(91,141,239,0.16)", muted: "#16213a", ink: "#9bb8f5" },
+    light: { accent: "#0a84ff", hover: "#3399ff", on: "#ffffff", soft: "rgba(10,132,255,0.10)", muted: "#e0f0ff", ink: "#0060cc" },
+    dark: { accent: "#4dabff", hover: "#70bdff", on: "#062040", soft: "rgba(77,171,255,0.16)", muted: "#122540", ink: "#99ccff" },
   },
   indigo: {
-    light: { accent: "#4f46e5", hover: "#4338ca", on: "#ffffff", soft: "rgba(79,70,229,0.10)", muted: "#e8e7fb", ink: "#3730a3" },
-    dark: { accent: "#7c79ec", hover: "#9b98f2", on: "#15123a", soft: "rgba(124,121,236,0.16)", muted: "#1c1a3a", ink: "#aaa6f5" },
+    light: { accent: "#5558ff", hover: "#7275ff", on: "#ffffff", soft: "rgba(85,88,255,0.10)", muted: "#e7e7ff", ink: "#3b3ee0" },
+    dark: { accent: "#8b8eff", hover: "#a5a7ff", on: "#101040", soft: "rgba(139,142,255,0.16)", muted: "#1a1a40", ink: "#b9bbff" },
   },
   teal: {
-    light: { accent: "#0d9488", hover: "#0f766e", on: "#ffffff", soft: "rgba(13,148,136,0.10)", muted: "#e2f4f2", ink: "#0f766e" },
-    dark: { accent: "#2dd4bf", hover: "#4ddbc8", on: "#06231f", soft: "rgba(45,212,191,0.15)", muted: "#102a27", ink: "#7fe9dc" },
+    light: { accent: "#00b8b8", hover: "#00d1d1", on: "#ffffff", soft: "rgba(0,184,184,0.10)", muted: "#dcf7f7", ink: "#008585" },
+    dark: { accent: "#2ce8e0", hover: "#52efe8", on: "#042624", soft: "rgba(44,232,224,0.15)", muted: "#0e2c2a", ink: "#86f2ec" },
   },
   violet: {
-    light: { accent: "#7c3aed", hover: "#6d28d9", on: "#ffffff", soft: "rgba(124,58,237,0.10)", muted: "#efe7fb", ink: "#5b21b6" },
-    dark: { accent: "#a78bfa", hover: "#bfa3fb", on: "#1f123a", soft: "rgba(167,139,250,0.16)", muted: "#231a3a", ink: "#c4b1fb" },
+    light: { accent: "#a033ff", hover: "#b255ff", on: "#ffffff", soft: "rgba(160,51,255,0.10)", muted: "#f2e6ff", ink: "#7c1ae0" },
+    dark: { accent: "#c07aff", hover: "#d09aff", on: "#200a40", soft: "rgba(192,122,255,0.16)", muted: "#271240", ink: "#d9adff" },
   },
   slate: {
-    light: { accent: "#3a3a3c", hover: "#2a2a2c", on: "#ffffff", soft: "rgba(60,60,67,0.10)", muted: "#e8e8ea", ink: "#3a3a3c" },
-    dark: { accent: "#c7c7cc", hover: "#d8d8dc", on: "#1c1c1e", soft: "rgba(199,199,204,0.14)", muted: "#2a2a2c", ink: "#e3e3e8" },
+    light: { accent: "#5e6270", hover: "#71758a", on: "#ffffff", soft: "rgba(94,98,112,0.10)", muted: "#e9eaee", ink: "#4a4e5c" },
+    dark: { accent: "#aeb4c4", hover: "#c2c7d6", on: "#181a20", soft: "rgba(174,180,196,0.14)", muted: "#26282e", ink: "#d4d8e2" },
   },
 };
 

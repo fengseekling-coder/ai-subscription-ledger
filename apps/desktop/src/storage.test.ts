@@ -54,4 +54,27 @@ describe("Tauri storage DTO", () => {
     expect(state.monitors).toEqual([monitor]);
     expect(state.monitors[0]).not.toHaveProperty("catalogId");
   });
+
+  it("忽略旧文件里的第二本账，存盘时不再写出", async () => {
+    invoke.mockResolvedValue({
+      budget: 500,
+      rows: [{ id: "overview", plan: "Overview", fee: "20" }],
+      bills: [{ id: "overview-bill", subscriptionId: "overview", amount: 20, paidAt: "2026-08-01" }],
+      subscriptionLedger: {
+        budget: 300,
+        rows: [{ id: "subscription", plan: "Team", fee: "75" }],
+        bills: [{ id: "subscription-bill", subscriptionId: "subscription", amount: 75, paidAt: "2026-08-02" }],
+      },
+    });
+
+    const state = await loadAppState();
+
+    expect(state.bills.map((bill) => bill.id)).toEqual(["overview-bill"]);
+    expect(state.rows.map((row) => row.id)).toEqual(["overview"]);
+    expect(state).not.toHaveProperty("subscriptionLedger");
+
+    await persistAppState(state);
+    const saved = invoke.mock.calls.at(-1)?.[1] as { state: Record<string, unknown> };
+    expect(saved.state).not.toHaveProperty("subscriptionLedger");
+  });
 });

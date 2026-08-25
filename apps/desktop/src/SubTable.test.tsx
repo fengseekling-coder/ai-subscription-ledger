@@ -1,7 +1,7 @@
 import { loadFromJson, visibleRowEntries, type AppState, type SubscriptionRow } from "@ai-sub/core";
 import { render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SubTable, type SubTableHandlers } from "./SubTable";
 
 const REF_DATE = new Date("2026-07-31T10:00:00"); // 固定参考日期
@@ -50,7 +50,7 @@ function iso(offsetDays: number): string {
 describe("SubTable 表头与分类", () => {
   it("中文模式下用中文表头", () => {
     const s = ledger([{}]);
-    render(<SubTable entries={visibleRowEntries(s)} language="zh-CN" {...handlers()} />);
+    render(<SubTable entries={visibleRowEntries(s, REF_DATE)} language="zh-CN" {...handlers()} />);
     expect(screen.getByText("分类")).toBeInTheDocument();
     expect(screen.getByText("套餐")).toBeInTheDocument();
     expect(screen.getByText("剩余")).toBeInTheDocument();
@@ -67,7 +67,7 @@ describe("SubTable 表头与分类", () => {
       { category: "影音娱乐" },
       { category: "其他" },
     ]);
-    render(<SubTable entries={visibleRowEntries(s)} language="en" {...handlers()} />);
+    render(<SubTable entries={visibleRowEntries(s, REF_DATE)} language="en" {...handlers()} />);
     expect(screen.getByText("Category")).toBeInTheDocument();
     expect(screen.getByText("Status")).toBeInTheDocument();
     expect(screen.getByText("AI services")).toBeInTheDocument();
@@ -83,34 +83,43 @@ describe("SubTable 表头与分类", () => {
   /** category 是用户数据：自定义分类必须原样显示，不能被翻译或改写。 */
   it("自定义分类在英文模式下原样透出", () => {
     const s = ledger([{ category: "我自己的分类" }]);
-    render(<SubTable entries={visibleRowEntries(s)} language="en" {...handlers()} />);
+    render(<SubTable entries={visibleRowEntries(s, REF_DATE)} language="en" {...handlers()} />);
     expect(screen.getByText("我自己的分类")).toBeInTheDocument();
   });
 });
 
 describe("SubTable 续费日徽标", () => {
+  // 组件内部用 new Date() 计算剩余天数，固定系统时间保证跨天稳定。
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(REF_DATE);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("按剩余天数给出中文文案", () => {
     const s = ledger([{ fee: "49", dueDate: iso(2) }]);
-    render(<SubTable entries={visibleRowEntries(s)} language="zh-CN" {...handlers()} />);
+    render(<SubTable entries={visibleRowEntries(s, REF_DATE)} language="zh-CN" {...handlers()} />);
     expect(screen.getByText("剩余 2 天")).toBeInTheDocument();
   });
 
   it("英文单复数正确：1 day / 2 days", () => {
     const one = ledger([{ fee: "49", dueDate: iso(1) }]);
     const { unmount } = render(
-      <SubTable entries={visibleRowEntries(one)} language="en" {...handlers()} />
+      <SubTable entries={visibleRowEntries(one, REF_DATE)} language="en" {...handlers()} />
     );
     expect(screen.getByText("1 day left")).toBeInTheDocument();
     unmount();
 
     const two = ledger([{ fee: "49", dueDate: iso(2) }]);
-    render(<SubTable entries={visibleRowEntries(two)} language="en" {...handlers()} />);
+    render(<SubTable entries={visibleRowEntries(two, REF_DATE)} language="en" {...handlers()} />);
     expect(screen.getByText("2 days left")).toBeInTheDocument();
   });
 
   it("当天到期显示 Due today", () => {
     const s = ledger([{ fee: "49", dueDate: iso(0) }]);
-    render(<SubTable entries={visibleRowEntries(s)} language="en" {...handlers()} />);
+    render(<SubTable entries={visibleRowEntries(s, REF_DATE)} language="en" {...handlers()} />);
     expect(screen.getByText("Due today")).toBeInTheDocument();
   });
 
@@ -124,7 +133,7 @@ describe("SubTable 续费日徽标", () => {
         fee: "100",
       },
     ]);
-    render(<SubTable entries={visibleRowEntries(s)} language="en" {...handlers()} />);
+    render(<SubTable entries={visibleRowEntries(s, REF_DATE)} language="en" {...handlers()} />);
     expect(screen.getByText("One-off")).toBeInTheDocument();
   });
 });
@@ -132,16 +141,32 @@ describe("SubTable 续费日徽标", () => {
 describe("SubTable 费用显示", () => {
   it("美元费用保留 $ 并给出约合人民币", () => {
     const s = ledger([{ fee: "US$20", dueDate: iso(5) }]);
-    render(<SubTable entries={visibleRowEntries(s)} language="zh-CN" {...handlers()} />);
+    render(<SubTable entries={visibleRowEntries(s, REF_DATE)} language="zh-CN" {...handlers()} />);
     expect(screen.getByText("$20")).toBeInTheDocument();
     expect(screen.getByText("≈¥144")).toBeInTheDocument();
   });
 
   it("人民币费用不加约价", () => {
     const s = ledger([{ fee: "49", dueDate: iso(5) }]);
-    render(<SubTable entries={visibleRowEntries(s)} language="zh-CN" {...handlers()} />);
+    render(<SubTable entries={visibleRowEntries(s, REF_DATE)} language="zh-CN" {...handlers()} />);
     expect(screen.getByText("49")).toBeInTheDocument();
     expect(screen.queryByText(/≈¥/)).not.toBeInTheDocument();
+  });
+
+  it("设置实付（含 0）后金额列只显示实付，不显示原定价", () => {
+    const s = ledger([{ fee: "US$75", actualFee: "0", dueDate: iso(5) }]);
+    render(<SubTable entries={visibleRowEntries(s, REF_DATE)} language="zh-CN" {...handlers()} />);
+    // 主文案是实付 0；原定价和约合人民币均不在列表中重复显示。
+    expect(screen.getByText("0")).toBeInTheDocument();
+    expect(screen.queryByText("$75")).not.toBeInTheDocument();
+    expect(screen.queryByText(/≈¥/)).not.toBeInTheDocument();
+  });
+
+  it("实付非 0 时金额列不显示原定价", () => {
+    const s = ledger([{ fee: "75", actualFee: "30", dueDate: iso(5) }]);
+    render(<SubTable entries={visibleRowEntries(s, REF_DATE)} language="zh-CN" {...handlers()} />);
+    expect(screen.getByText("30")).toBeInTheDocument();
+    expect(screen.queryByText("75")).not.toBeInTheDocument();
   });
 });
 
@@ -156,7 +181,7 @@ describe("SubTable 索引映射", () => {
       { plan: "B-未订阅", subscribed: false, dueDate: "" },
       { plan: "C-最紧急", fee: "49", dueDate: iso(1) },
     ]);
-    const entries = visibleRowEntries(s);
+    const entries = visibleRowEntries(s, REF_DATE);
     // 最紧急的排在最前，它在 state.rows 里的下标是 2
     expect(entries[0].row.plan).toBe("C-最紧急");
     expect(entries[0].index).toBe(2);
@@ -174,7 +199,7 @@ describe("SubTable 索引映射", () => {
       { plan: "B", subscribed: false, dueDate: "" },
     ]);
     const h = handlers();
-    render(<SubTable entries={visibleRowEntries(s)} language="zh-CN" {...h} />);
+    render(<SubTable entries={visibleRowEntries(s, REF_DATE)} language="zh-CN" {...h} />);
 
     await userEvent.click(screen.getByRole("button", { name: "订阅" }));
     expect(h.onToggle).toHaveBeenCalledWith(1);
@@ -185,5 +210,12 @@ describe("SubTable 空态", () => {
   it("没有条目时给出空态文案", () => {
     render(<SubTable entries={[]} language="en" {...handlers()} />);
     expect(screen.getByText("No subscriptions yet")).toBeInTheDocument();
+  });
+
+  it("空态自身就是唯一的卡片容器，不再额外渲染表格卡片", () => {
+    render(<SubTable entries={[]} language="zh-CN" {...handlers()} />);
+    expect(document.querySelectorAll(".empty-state")).toHaveLength(1);
+    expect(document.querySelector(".table-card")).not.toBeInTheDocument();
+    expect(document.querySelector(".list-container")).not.toBeInTheDocument();
   });
 });

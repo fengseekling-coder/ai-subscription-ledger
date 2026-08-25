@@ -1,7 +1,9 @@
 import { loadFromJson, pendingRenewItems, type AppState, type SubscriptionRow } from "@ai-sub/core";
 import { cleanup, render, screen } from "@testing-library/react";
+import { userEvent } from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { PendingView } from "./PendingView";
+import type { ConfirmationRequest } from "./ui/ConfirmDialog";
 
 const REF_DATE = new Date("2026-07-31T10:00:00"); // 固定参考日期，确保测试可重现
 
@@ -31,14 +33,19 @@ function ledger(rows: Partial<SubscriptionRow>[]): AppState {
 }
 
 function renderPending(state: AppState, language: AppState["language"] = "zh-CN") {
-  return render(
+  const onCommit = vi.fn();
+  const showNotice = vi.fn();
+  const onRequestConfirmation = vi.fn<(request: ConfirmationRequest) => void>();
+  const view = render(
     <PendingView
       state={{ ...state, language }}
       pending={pendingRenewItems(state.rows, REF_DATE)}
-      onCommit={vi.fn()}
-      showNotice={vi.fn()}
+      onCommit={onCommit}
+      showNotice={showNotice}
+      onRequestConfirmation={onRequestConfirmation}
     />
   );
+  return { ...view, onCommit, showNotice, onRequestConfirmation };
 }
 
 describe("PendingView 费用显示", () => {
@@ -53,6 +60,13 @@ describe("PendingView 费用显示", () => {
     expect(meta).toContain("≈¥144");
     // 「¥20」后面不能紧跟数字，否则会把 ≈¥144 里的片段也算进来
     expect(meta).not.toMatch(/(?<!≈)¥20(?!\d)/);
+  });
+
+  it("待续费展示实付而不是定价", () => {
+    renderPending(ledger([{ plan: "Claude Pro", fee: "75", actualFee: "30" }]));
+    const meta = document.querySelector(".renew-item__meta")?.textContent ?? "";
+    expect(meta).toContain("30");
+    expect(meta).not.toContain("75");
   });
 
   it("人民币订阅原样显示，不加约价", () => {
@@ -108,5 +122,20 @@ describe("PendingView 列表内容", () => {
       (e) => e.textContent
     );
     expect(plans).toEqual(["第一", "第二"]);
+  });
+
+  it("未续费请求明确操作，未确认时不改变订阅", async () => {
+    const state = ledger([{ plan: "即将到期", fee: "49", dueDate: iso(1) }]);
+    const { onCommit, onRequestConfirmation } = renderPending(state);
+
+    await userEvent.click(screen.getByRole("button", { name: "未续费" }));
+
+    expect(onCommit).not.toHaveBeenCalled();
+    const request = onRequestConfirmation.mock.calls[0][0];
+    expect(request.confirmLabel).toBe("删除");
+    expect(request.secondaryLabel).toBe("改为未订阅");
+
+    request.onSecondary?.();
+    expect((onCommit.mock.calls[0][0] as AppState).rows[0].subscribed).toBe(false);
   });
 });

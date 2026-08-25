@@ -1,5 +1,5 @@
 import { billsForCalendarMonth } from "./stats.js";
-import { categoryClass, isActiveSubscription } from "./rules.js";
+import { billingIntervalMonths, categoryClass, effectiveFee, isActiveSubscription } from "./rules.js";
 import { feeToCnyAmount } from "./money.js";
 import type { AppState } from "./types.js";
 
@@ -56,7 +56,7 @@ export function spendByCategory(
       .filter((r) => isActiveSubscription(r, ref))
       .reduce(
         (sum, row) =>
-          sum + feeToCnyAmount(row.fee) / (row.billingModel === "年付" ? 12 : 1),
+          sum + feeToCnyAmount(effectiveFee(row)) / billingIntervalMonths(row.billingModel),
         0
       );
     rows.push({

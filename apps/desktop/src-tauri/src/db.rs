@@ -406,6 +406,21 @@ mod tests {
     }
 
     #[test]
+    fn extra_subscription_ledger_field_is_ignored() {
+        let json = r#"{
+            "budget": 500,
+            "rows": [],
+            "bills": [],
+            "subscriptionLedger": { "budget": 300, "rows": [], "bills": [] }
+        }"#;
+        let state: AppStateDto = serde_json::from_str(json).unwrap();
+        assert_eq!(state.budget, 500.0);
+        assert!(state.rows.is_empty());
+        let dumped = serde_json::to_value(&state).unwrap();
+        assert!(dumped.get("subscriptionLedger").is_none());
+    }
+
+    #[test]
     fn save_then_load_round_trips_every_field() {
         let dir = TempDir::new().unwrap();
         save_state_in(dir.path(), &sample_state()).unwrap();

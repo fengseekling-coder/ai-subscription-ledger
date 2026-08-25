@@ -10,7 +10,7 @@ export const LANGS: { value: LangPref; label: Record<Lang, string> }[] = [
 export type Dict = {
   brand: string;
   common: { close: string };
-  nav: { subs: string; stats: string; expired: string; bills: string; pending: string };
+  nav: { subs: string; subscription: string; subscriptionBills: string; stats: string; expired: string; bills: string; pending: string };
   toolbar: { add: string; addBill: string; theme: string; settings: string };
   dashboard: {
     monthSpend: string;
@@ -76,14 +76,26 @@ export type Dict = {
       | "其他",
       string
     >;
-    purchaseChannel: string;
-    purchaseChannelOptions: Record<"官方" | "中转", string>;
+    provider: string;
+    providerPlaceholder: string;
     billingModel: string;
-    billingModelOptions: Record<"月付" | "年付" | "按量计费" | "额度包", string>;
+    billingModelOptions: Record<"月付" | "季付" | "年付" | "按量计费" | "额度包", string>;
+    annualWithSave: (percentOff: number) => string;
     plan: string;
     planPlaceholder: string;
+    selectPlan: string;
+    customPlan: string;
+    backToPresets: string;
+    planLabel: (name: string, fee: string) => string;
+    planLabelPerSeat: (name: string, fee: string) => string;
+    seatsUnit: string;
+    currency: string;
+    currencyCny: string;
+    currencyUsd: string;
     fee: string;
     feePlaceholder: string;
+    actualFee: string;
+    actualFeePlaceholder: string;
     dates: string;
     subDate: string;
     dueDate: string;
@@ -96,6 +108,7 @@ export type Dict = {
     expired: string;
     expiredDesc: string;
     delete: string;
+    confirmDeleteAction: string;
     cancel: string;
     add: string;
     save: string;
@@ -136,8 +149,10 @@ export type Dict = {
     dueToday: string;
     overdueDays: (n: number) => string;
     daysLeft: (n: number) => string;
+    unrenewedTitle: string;
     unrenewedPrompt: (plan: string) => string;
-    confirmDeleteRow: string;
+    unsubscribe: string;
+    confirmDeleteRow: (plan: string) => string;
     renewedNotice: (plan: string, due: string) => string;
     deletedNotice: (plan: string) => string;
     unsubscribedNotice: (plan: string) => string;
@@ -155,6 +170,7 @@ export type Dict = {
     checking: string;
     refresh: string;
     remove: string;
+    confirmRemove: string;
     verifyFailed: (msg: string) => string;
     verifyOk: (detail: string) => string;
     cancel: string;
@@ -253,7 +269,7 @@ export type Dict = {
 const zh: Dict = {
   brand: "订阅账本",
   common: { close: "关闭" },
-  nav: { subs: "概览", stats: "统计", expired: "已过期", bills: "账单", pending: "待续费" },
+  nav: { subs: "概览", subscription: "订阅", subscriptionBills: "订阅账单", stats: "统计", expired: "已过期", bills: "账单", pending: "待续费" },
   toolbar: { add: "新增订阅", addBill: "记一笔", theme: "深色", settings: "设置" },
   dashboard: {
     monthSpend: "本月支出",
@@ -319,22 +335,32 @@ const zh: Dict = {
       "影音娱乐": "影音娱乐",
       "其他": "其他",
     },
-    purchaseChannel: "购买渠道",
-    purchaseChannelOptions: {
-      官方: "官方",
-      中转: "中转",
-    },
+    provider: "服务商",
+    providerPlaceholder: "选择或输入服务商",
     billingModel: "计费方式",
     billingModelOptions: {
       月付: "月付",
+      季付: "季付",
       年付: "年付",
       按量计费: "按量计费",
       额度包: "额度包",
     },
+    annualWithSave: (p) => `年付（省 ${p}%）`,
     plan: "套餐 / 额度",
     planPlaceholder: "例如 ChatGPT Plus",
+    selectPlan: "选择套餐",
+    customPlan: "自定义…",
+    backToPresets: "选择内置套餐",
+    planLabel: (name, fee) => `${name}（$${fee}/月）`,
+    planLabelPerSeat: (name, fee) => `${name}（$${fee}/人/月）`,
+    seatsUnit: "人",
+    currency: "币种",
+    currencyCny: "人民币",
+    currencyUsd: "美元",
     fee: "金额",
-    feePlaceholder: "例如 $20 或 29.9",
+    feePlaceholder: "例如 20 或 29.9",
+    actualFee: "实付",
+    actualFeePlaceholder: "默认同金额",
     dates: "日期",
     subDate: "订阅日期",
     dueDate: "续费日期",
@@ -347,6 +373,7 @@ const zh: Dict = {
     expired: "标记为已过期",
     expiredDesc: "不再计入月费",
     delete: "删除",
+    confirmDeleteAction: "确认删除",
     cancel: "取消",
     add: "添加",
     save: "保存",
@@ -365,7 +392,7 @@ const zh: Dict = {
     noFillable: "未识别到可填充的字段",
     restoreFailed: "恢复订阅失败",
     billAdded: (plan, amount) => `已为「${plan}」添加账单 ${amount} 元`,
-    confirmDelete: (plan) => `确定删除「${plan}」？`,
+    confirmDelete: (plan) => `确定删除「${plan}」及其关联账单？`,
   },
   table: {
     category: "分类",
@@ -387,9 +414,11 @@ const zh: Dict = {
     dueToday: "今天到期",
     overdueDays: (n) => `已过期 ${n} 天`,
     daysLeft: (n) => `剩余 ${n} 天`,
+    unrenewedTitle: "未续费",
     unrenewedPrompt: (plan) =>
-      `${plan} 未续费：删除条目，还是改为未订阅？\n确定 = 删除，取消 = 改为未订阅`,
-    confirmDeleteRow: "确定删除这一行？",
+      `「${plan}」未续费。删除订阅及关联账单，还是改为未订阅？`,
+    unsubscribe: "改为未订阅",
+    confirmDeleteRow: (plan) => `确定删除「${plan}」及其关联账单？`,
     renewedNotice: (plan, due) => `${plan} 已续费，续费日 → ${due}`,
     deletedNotice: (plan) => `${plan} 已删除。`,
     unsubscribedNotice: (plan) => `${plan} 已改为未订阅。`,
@@ -407,6 +436,7 @@ const zh: Dict = {
     checking: "检查中…",
     refresh: "刷新",
     remove: "删除",
+    confirmRemove: "确定移除此自动监控？",
     verifyFailed: (msg) => `验证失败: ${msg}`,
     verifyOk: (detail) => `验证通过 — ${detail}`,
     cancel: "取消",
@@ -505,7 +535,7 @@ const zh: Dict = {
 const en: Dict = {
   brand: "Subscription Ledger",
   common: { close: "Close" },
-  nav: { subs: "Overview", stats: "Stats", expired: "Expired", bills: "Bills", pending: "Renewals" },
+  nav: { subs: "Overview", subscription: "Subscriptions", subscriptionBills: "Subscription bills", stats: "Stats", expired: "Expired", bills: "Bills", pending: "Renewals" },
   toolbar: { add: "Add", addBill: "Add bill", theme: "Theme", settings: "Settings" },
   dashboard: {
     monthSpend: "This month",
@@ -571,22 +601,32 @@ const en: Dict = {
       "影音娱乐": "Media",
       "其他": "Other",
     },
-    purchaseChannel: "Purchase channel",
-    purchaseChannelOptions: {
-      官方: "Official",
-      中转: "Relay",
-    },
+    provider: "Provider",
+    providerPlaceholder: "Select or type a provider",
     billingModel: "Billing model",
     billingModelOptions: {
       月付: "Monthly",
+      季付: "Quarterly",
       年付: "Annual",
       按量计费: "Usage-based",
       额度包: "Credit pack",
     },
+    annualWithSave: (p) => `Annual (${p}% off)`,
     plan: "Plan / credits",
     planPlaceholder: "e.g. ChatGPT Plus",
+    selectPlan: "Select a plan",
+    customPlan: "Custom…",
+    backToPresets: "Pick a built-in plan",
+    planLabel: (name, fee) => `${name} ($${fee}/mo)`,
+    planLabelPerSeat: (name, fee) => `${name} ($${fee}/seat/mo)`,
+    seatsUnit: "seats",
+    currency: "Currency",
+    currencyCny: "RMB",
+    currencyUsd: "USD",
     fee: "Amount",
-    feePlaceholder: "e.g. $20 or 29.9",
+    feePlaceholder: "e.g. 20 or 29.9",
+    actualFee: "Actual paid",
+    actualFeePlaceholder: "Defaults to amount",
     dates: "Dates",
     subDate: "Subscribed on",
     dueDate: "Next renewal",
@@ -599,6 +639,7 @@ const en: Dict = {
     expired: "Mark expired",
     expiredDesc: "Excluded from monthly total",
     delete: "Delete",
+    confirmDeleteAction: "Confirm delete",
     cancel: "Cancel",
     add: "Add",
     save: "Save",
@@ -617,7 +658,7 @@ const en: Dict = {
     noFillable: "Nothing recognized to fill in",
     restoreFailed: "Could not restore the subscription",
     billAdded: (plan, amount) => `Added a ¥${amount} bill for ${plan}`,
-    confirmDelete: (plan) => `Delete ${plan}?`,
+    confirmDelete: (plan) => `Delete ${plan} and its linked bills?`,
   },
   table: {
     category: "Category",
@@ -639,9 +680,11 @@ const en: Dict = {
     dueToday: "Due today",
     overdueDays: (n) => (n === 1 ? "1 day overdue" : `${n} days overdue`),
     daysLeft: (n) => (n === 1 ? "1 day left" : `${n} days left`),
+    unrenewedTitle: "Not renewed",
     unrenewedPrompt: (plan) =>
-      `${plan} was not renewed. Delete the entry, or mark it unsubscribed?\nOK = delete, Cancel = mark unsubscribed`,
-    confirmDeleteRow: "Delete this row?",
+      `${plan} was not renewed. Delete the subscription and its linked bills, or mark it unsubscribed?`,
+    unsubscribe: "Mark unsubscribed",
+    confirmDeleteRow: (plan) => `Delete ${plan} and its linked bills?`,
     renewedNotice: (plan, due) => `${plan} renewed — next due ${due}`,
     deletedNotice: (plan) => `${plan} deleted.`,
     unsubscribedNotice: (plan) => `${plan} marked unsubscribed.`,
@@ -659,6 +702,7 @@ const en: Dict = {
     checking: "Checking…",
     refresh: "Refresh",
     remove: "Remove",
+    confirmRemove: "Remove this automatic monitor?",
     verifyFailed: (msg) => `Verification failed: ${msg}`,
     verifyOk: (detail) => `Verified — ${detail}`,
     cancel: "Cancel",

@@ -1,5 +1,5 @@
 import { currentMonthKey, daysUntil } from "./dates.js";
-import { isActiveSubscription, isCreditLike, isRowExpired } from "./rules.js";
+import { effectiveFee, isActiveSubscription, isCreditLike, isRowExpired } from "./rules.js";
 import type { AppState, Bill, Summary, SubscriptionRow } from "./types.js";
 
 /** 获取指定月份的账单列表（按 paidAt 的前 7 位 YYYY-MM 匹配） */
@@ -66,7 +66,7 @@ export function computeSummary(state: AppState, ref = new Date()): Summary {
     nearestPlan: nearest?.row.plan ?? null,
     nearestDueDate: nearest?.row.dueDate ?? null,
     nearestLeft: nearest?.left ?? null,
-    nearestFee: nearest?.row.fee ? String(nearest.row.fee) : null,
+    nearestFee: nearest ? String(effectiveFee(nearest.row)) || null : null,
     nearestUrgent: Boolean(nearest && nearest.left !== null && nearest.left >= 0 && nearest.left <= 3),
     pendingRenewCount: pending.length,
     pendingFirstPlan: pending[0]?.row.plan ?? null,

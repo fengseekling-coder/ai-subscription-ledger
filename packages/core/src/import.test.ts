@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { loadFromJson, createEmptyState, createDemoState } from "./load.js";
 import { normalizeRow, normalizeBill } from "./normalize.js";
-import { moneyValue, fmtMoney } from "./money.js";
+import { moneyValue, fmtMoney, USD_CNY_RATE } from "./money.js";
 import { daysUntil, formatDate, todayLocalISO, normalizeDateInput, normalizeEnglishMonthDate } from "./dates.js";
 
 describe("loadFromJson", () => {
@@ -24,6 +24,60 @@ describe("loadFromJson", () => {
     expect(out.rows).toHaveLength(1);
     expect(out.rows[0].plan).toBe("Test Pro");
     expect(out.rows[0].id).toBeTruthy();
+  });
+
+  it("忽略旧文件里的第二本账，不并进订阅或账单", () => {
+    const out = loadFromJson({
+      budget: 800,
+      rows: [{ id: "overview", plan: "Overview", fee: "20" }],
+      bills: [{ id: "overview-bill", subscriptionId: "overview", amount: 20, paidAt: "2026-08-01" }],
+      subscriptionLedger: {
+        budget: 300,
+        rows: [{ id: "subscription", plan: "Subscription", fee: "75" }],
+        bills: [{ id: "subscription-bill", subscriptionId: "subscription", amount: 75, paidAt: "2026-08-02" }],
+      },
+    });
+
+    expect(out.rows.map((row) => row.id)).toEqual(["overview"]);
+    expect(out.bills.map((bill) => bill.id)).toEqual(["overview-bill"]);
+    expect(out).not.toHaveProperty("subscriptionLedger");
+  });
+
+  it("从备注生成账单时走实付并折算美元", () => {
+    const out = loadFromJson({
+      budget: 500,
+      rows: [
+        {
+          id: "r1",
+          plan: "ChatGPT Plus",
+          fee: "US$20",
+          actualFee: "US$10",
+          subscribed: true,
+          usage: "订单 ABC123 · 2026-07-05",
+        },
+      ],
+      bills: [],
+    });
+    expect(out.bills).toHaveLength(1);
+    expect(out.bills[0].amount).toBeCloseTo(10 * USD_CNY_RATE, 2);
+  });
+
+  it("备注账单在实付为 0 时不生成", () => {
+    const out = loadFromJson({
+      budget: 500,
+      rows: [
+        {
+          id: "r1",
+          plan: "ChatGPT Plus",
+          fee: "US$20",
+          actualFee: "0",
+          subscribed: true,
+          usage: "订单 ABC123 · 2026-07-05",
+        },
+      ],
+      bills: [],
+    });
+    expect(out.bills).toHaveLength(0);
   });
 
   it("coerces invalid budget to default", () => {
@@ -119,11 +173,13 @@ describe("normalizeRow", () => {
     const out = normalizeRow({
       plan: "  Test Plan  ",
       category: "  官方  ",
+      provider: "  Test Provider  ",
       fee: "  20  ",
     });
     expect(out.plan).toBe("Test Plan");
     expect(out.category).toBe("AI 服务");
     expect(out.purchaseChannel).toBe("官方");
+    expect(out.provider).toBe("Test Provider");
     expect(out.billingModel).toBe("月付");
     expect(out.fee).toBe("20");
   });

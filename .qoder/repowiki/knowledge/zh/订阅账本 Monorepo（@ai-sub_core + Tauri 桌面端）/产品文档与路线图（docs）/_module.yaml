@@ -1,8 +1,0 @@
-schema_version: 1
-module_path: docs_and_sketches
-title: 产品文档与路线图（docs）
-scope:
-    - docs/
-source_files: []
-depends_on: []
-related_to: []

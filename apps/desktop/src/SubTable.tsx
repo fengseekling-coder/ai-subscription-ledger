@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo } from "react";
 import {
   daysUntil,
   dueMeta,
+  effectiveFee,
   feeDisplayParts,
   categoryClass,
   isCreditLike,
@@ -76,7 +77,10 @@ const SubTableRow = memo(function SubTableRow({
     if (left === 0) return t.dueToday;
     return t.daysLeft(left);
   }, [row.dueDate, due.label, t]);
-  const feeParts = useMemo(() => feeDisplayParts(row.fee), [row.fee]);
+  // 实付为可选覆盖项：设置了实付（含 0）时，金额列只显示实付，避免重复展示定价。
+  const hasActual = String(row.actualFee ?? "").trim() !== "";
+  const effectiveFeeStr = effectiveFee(row);
+  const effectiveParts = useMemo(() => feeDisplayParts(effectiveFeeStr), [effectiveFeeStr]);
   const categoryStyle = {
     class: `category-tag--${categoryClass(row.category)}`,
     label: categoryLabel(row.category, categoryLabels),
@@ -113,8 +117,8 @@ const SubTableRow = memo(function SubTableRow({
       <ReadCell value={row.plan} />
 
       <td className="cell-fee">
-        <span className="cell-fee__main">{feeParts.primary}</span>
-        {feeParts.approx && <span className="cell-fee__approx">{feeParts.approx}</span>}
+        <span className="cell-fee__main">{effectiveParts.primary}</span>
+        {!hasActual && effectiveParts.approx && <span className="cell-fee__approx">{effectiveParts.approx}</span>}
       </td>
 
       <ReadCell value={row.usage} className="cell-note" empty="blank" />
@@ -254,16 +258,3 @@ export const SubTable = memo(function SubTable({
     </div>
   );
 });
-
-export function confirmUnrenewedOrDelete(
-  plan: string,
-  onDelete: () => void,
-  onUnsubscribe: () => void,
-  language?: AppState["language"]
-) {
-  if (confirm(tFor(resolveLang(language)).table.unrenewedPrompt(plan))) {
-    onDelete();
-  } else {
-    onUnsubscribe();
-  }
-}

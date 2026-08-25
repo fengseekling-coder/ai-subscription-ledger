@@ -16,7 +16,7 @@ export type SubscriptionCategory =
 export type PurchaseChannel = "官方" | "中转";
 
 /** 计费方式：额度包与按量计费均无需续费日 */
-export type BillingModel = "月付" | "年付" | "按量计费" | "额度包";
+export type BillingModel = "月付" | "季付" | "年付" | "按量计费" | "额度包";
 
 /** 订阅记录行 */
 export interface SubscriptionRow {
@@ -25,10 +25,14 @@ export interface SubscriptionRow {
   category: string;
   /** 购买来源 */
   purchaseChannel: PurchaseChannel;
+  /** 服务商名称；旧记录为空时由套餐名称推断内置服务商。 */
+  provider?: string;
   /** 计费方式 */
   billingModel: BillingModel;
   plan: string;
   fee: string;
+  /** 实付金额（可选）。设置后（含 "0"）优先于 fee 作为每周期实际入账金额；空串/未定义 = 未设置，回退用 fee */
+  actualFee?: string;
   subscribed: boolean;
   dueDate: string;
   subscribedAt: string;

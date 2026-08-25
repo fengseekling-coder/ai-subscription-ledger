@@ -44,7 +44,7 @@ export function SettingsModal({
   onLanguageChange,
   appearance,
   onAppearanceChange,
-  _monitorCount,
+  monitorCount: _monitorCount,
   onOpenMonitor,
 }: Props) {
   const t = tFor(resolveLang(language));

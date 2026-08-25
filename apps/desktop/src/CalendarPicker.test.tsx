@@ -1,6 +1,6 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CalendarPicker } from "./CalendarPicker";
 
 describe("CalendarPicker", () => {
@@ -32,6 +32,17 @@ describe("CalendarPicker", () => {
     expect(document.querySelector(".cal-picker__nav")).toBeInTheDocument();
   });
 
+  it("renders the calendar in a portal so modal scrolling cannot clip it", async () => {
+    const user = userEvent.setup();
+    render(<CalendarPicker {...defaultProps} />);
+
+    await user.click(screen.getByRole("button"));
+
+    const dropdown = document.querySelector(".cal-picker__dropdown");
+    expect(dropdown).toHaveClass("cal-picker__dropdown--portal");
+    expect(dropdown?.parentElement).toBe(document.body);
+  });
+
   it("displays calendar grid with days", async () => {
     const user = userEvent.setup();
     render(<CalendarPicker {...defaultProps} />);
@@ -61,6 +72,16 @@ describe("CalendarPicker", () => {
     await user.click(document.body);
     
     expect(mockOnClose).toHaveBeenCalled();
+  });
+
+  it("keeps the calendar open when interacting with its portalled content", async () => {
+    const user = userEvent.setup();
+    const mockOnClose = vi.fn();
+    render(<CalendarPicker {...defaultProps} isOpen onClose={mockOnClose} />);
+
+    await user.click(document.querySelector(".cal-picker__dropdown")!);
+
+    expect(mockOnClose).not.toHaveBeenCalled();
   });
 
   it("calls onChange when a date is selected", async () => {

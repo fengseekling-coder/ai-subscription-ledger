@@ -20,6 +20,7 @@ import {
   type BillDraft,
 } from "./actions.js";
 import { USD_CNY_RATE } from "./money.js";
+import { effectiveFee, isRecurringFee } from "./rules.js";
 import { spendByCategory } from "./analytics.js";
 import { loadFromJson } from "./load.js";
 import type { AppState, SubscriptionRow } from "./types.js";
@@ -53,6 +54,30 @@ function unwrap<T>(r: T | { error: string }): T {
   return r as T;
 }
 
+describe("effectiveFee", () => {
+  it("未设置实付时回退到金额", () => {
+    expect(effectiveFee({ fee: "75" })).toBe("75");
+    expect(effectiveFee({ fee: "75", actualFee: "" })).toBe("75");
+    expect(effectiveFee({ fee: "75", actualFee: "  " })).toBe("75");
+  });
+
+  it("设置实付（含 0）时用实付", () => {
+    expect(effectiveFee({ fee: "75", actualFee: "30" })).toBe("30");
+    expect(effectiveFee({ fee: "75", actualFee: "0" })).toBe("0");
+  });
+});
+
+describe("isRecurringFee", () => {
+  it("实付覆盖定价：只有实付时仍视为周期订阅", () => {
+    expect(isRecurringFee(stateWith([{ fee: "", actualFee: "30" }]).rows[0])).toBe(true);
+  });
+
+  it("实付 0 / US$0 视为免费周期订阅", () => {
+    expect(isRecurringFee(stateWith([{ fee: "75", actualFee: "0" }]).rows[0])).toBe(true);
+    expect(isRecurringFee(stateWith([{ fee: "US$20", actualFee: "US$0" }]).rows[0])).toBe(true);
+  });
+});
+
 describe("billDraftFor", () => {
   it("errors when there is no subscription at all", () => {
     expect(billDraftFor(stateWith([]), REF)).toEqual({ error: "请先添加订阅，再记账单。" });
@@ -73,6 +98,11 @@ describe("billDraftFor", () => {
   it("converts a USD fee to CNY at USD_CNY_RATE", () => {
     const s = stateWith([{ fee: "US$20", dueDate: "2026-08-01" }]);
     expect(unwrap(billDraftFor(s, REF)).amount).toBe(String(20 * USD_CNY_RATE));
+  });
+
+  it("实付覆盖记账预填金额", () => {
+    const s = stateWith([{ fee: "75", actualFee: "30", dueDate: "2026-08-01" }]);
+    expect(unwrap(billDraftFor(s, REF)).amount).toBe("30");
   });
 
   it("leaves a CNY fee unconverted", () => {
@@ -250,6 +280,15 @@ describe("renewRow", () => {
     expect(next.bills[0].amount).toBeCloseTo(300 * USD_CNY_RATE, 2);
   });
 
+  it("advances quarterly subscriptions by three months", () => {
+    const s = stateWith([
+      { fee: "60", billingModel: "季付", dueDate: "2026-07-10" },
+    ]);
+    const next = unwrap(renewRow(s, 0, REF));
+    expect(next.rows[0].dueDate).toBe("2026-10-10");
+    expect(next.bills[0].amount).toBe(60);
+  });
+
   it("clears the expired flag and re-subscribes", () => {
     const s = stateWith([{ fee: "49", dueDate: "2026-06-10", expired: true }]);
     const next = unwrap(renewRow(s, 0, REF));
@@ -261,6 +300,18 @@ describe("renewRow", () => {
     const s = stateWith([{ fee: "US$20", dueDate: "2026-07-10" }]);
     const next = unwrap(renewRow(s, 0, REF));
     expect(next.bills[0].amount).toBeCloseTo(20 * USD_CNY_RATE, 2);
+  });
+
+  it("实付覆盖金额生成续费账单", () => {
+    const s = stateWith([{ fee: "75", actualFee: "30", dueDate: "2026-07-10" }]);
+    const next = unwrap(renewRow(s, 0, REF));
+    expect(next.bills[0].amount).toBe(30);
+  });
+
+  it("实付为 0 时续费视为免费、不产生账单", () => {
+    const s = stateWith([{ fee: "75", actualFee: "0", dueDate: "2026-07-10" }]);
+    const next = unwrap(renewRow(s, 0, REF));
+    expect(next.bills).toHaveLength(0);
   });
 
   // 这条用例是 ref 注入修好之前写不出来的：去重键取自真实时钟，
@@ -402,6 +453,7 @@ describe("addRowWithDetails", () => {
         {
           category: "AI 服务",
           purchaseChannel: "官方",
+          provider: "  Canva  ",
           billingModel: "月付",
           plan: "   ",
           fee: "20",
@@ -423,6 +475,7 @@ describe("addRowWithDetails", () => {
         {
           category: "AI 服务",
           purchaseChannel: "官方",
+          provider: "  Canva  ",
           billingModel: "月付",
           plan: "Claude Pro",
           fee: "US$20",
@@ -437,6 +490,7 @@ describe("addRowWithDetails", () => {
     );
     expect(next.rows).toHaveLength(1);
     expect(next.rows[0].subscribedAt).toBe("2026-07-15");
+    expect(next.rows[0].provider).toBe("Canva");
   });
 });
 
@@ -572,6 +626,25 @@ describe("feeToCnyAmount 口径统一", () => {
     ]);
     const cat = spendByCategory(s, "2026-07", REF_MONTH)[0];
     expect(cat.feeMonthlyEst).toBeCloseTo((300 * USD_CNY_RATE) / 12, 2);
+  });
+
+  it("季付费用按三个月折算为月费参考", () => {
+    const s = stateWith([
+      {
+        category: "AI 服务",
+        billingModel: "季付",
+        fee: "60",
+        dueDate: "2026-10-15",
+      },
+    ]);
+    const cat = spendByCategory(s, "2026-07", REF_MONTH)[0];
+    expect(cat.feeMonthlyEst).toBeCloseTo(60 / 3, 2);
+  });
+
+  it("月费参考使用实付而不是定价", () => {
+    const s = stateWith([{ fee: "75", actualFee: "30", dueDate: "2026-08-01" }]);
+    const cat = spendByCategory(s, "2026-07", REF_MONTH)[0];
+    expect(cat.feeMonthlyEst).toBe(30);
   });
 
   it("spendByCategory 的 ref 可注入：有效性按 ref 而非真实时钟判定", () => {

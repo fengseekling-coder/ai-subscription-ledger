@@ -1,14 +1,37 @@
 import { daysUntil } from "./dates.js";
 import { moneyValue } from "./money.js";
-import type { SubscriptionRow } from "./types.js";
+import type { BillingModel, SubscriptionRow } from "./types.js";
+
+/** 计费周期对应的月数：续费推进与月均折算共用 */
+export function billingIntervalMonths(model: BillingModel): number {
+  if (model === "年付") return 12;
+  if (model === "季付") return 3;
+  return 1;
+}
 
 export function isCreditLike(row: SubscriptionRow): boolean {
   return row.billingModel === "额度包" || row.billingModel === "按量计费";
 }
 
+/**
+ * 订阅的实际入账金额字符串：设置了实付（含 "0"）则用实付，否则回退到金额 fee。
+ * 实付是可选覆盖项，"0" 为有效值（免费），仅空串/未定义才回退。
+ */
+export function effectiveFee(row: Pick<SubscriptionRow, "fee" | "actualFee">): string {
+  const actual = String(row.actualFee ?? "").trim();
+  return actual !== "" ? actual : row.fee;
+}
+
+function isZeroFee(raw: string): boolean {
+  const s = String(raw ?? "").trim();
+  if (!s) return false;
+  return moneyValue(s) === 0 && /0/.test(s);
+}
+
 export function isRecurringFee(row: SubscriptionRow): boolean {
   if (!row.subscribed || isCreditLike(row)) return false;
-  return moneyValue(row.fee) > 0 || /^\s*0\s*$/.test(String(row.fee || ""));
+  const fee = effectiveFee(row);
+  return moneyValue(fee) > 0 || isZeroFee(fee);
 }
 
 export function needsDueDate(row: SubscriptionRow, ref = new Date()): boolean {

@@ -33,15 +33,18 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Icon } from "./ui/Icon";
+import { ConfirmDialog, type ConfirmationRequest } from "./ui/ConfirmDialog";
 
 type AppMode = "subs" | "expired" | "bills" | "pending" | "stats";
 
 const NEW_SUBSCRIPTION_DRAFT: SubscriptionFormDraft = {
   category: "AI 服务",
   purchaseChannel: "官方",
+  provider: "",
   billingModel: "月付",
   plan: "",
   fee: "",
+  actualFee: "",
   subscribedAt: "",
   dueDate: "",
   usage: "",
@@ -151,6 +154,7 @@ export default function App() {
   const [duePickIndex, setDuePickIndex] = useState<number | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showMonitor, setShowMonitor] = useState(false);
+  const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const [notifyOn, setNotifyOn] = useState(localStorage.getItem("ai-sub-notify") === "on");
   // 账单表单：新增时 billId 为 null，编辑时带上要改的账单 id
   const [billForm, setBillForm] = useState<{ billId: string | null; draft: BillDraft } | null>(null);
@@ -176,7 +180,7 @@ export default function App() {
     () => (state ? expiredRowEntries(state) : []),
     [state]
   );
-  
+
   const isEmptyLedger = useMemo(
     () => Boolean(state && state.rows.length === 0 && state.bills.length === 0),
     [state]
@@ -237,6 +241,9 @@ export default function App() {
   const commit = useCallback((next: AppState) => {
     setState(next);
   }, []);
+  const requestConfirmation = useCallback((request: ConfirmationRequest) => {
+    setConfirmation(request);
+  }, []);
 
   const changeLanguage = useCallback((next: LangPref) => {
     setState((prev) => (prev ? { ...prev, language: next } : prev));
@@ -261,19 +268,32 @@ export default function App() {
   const subHandlers = useMemo(
     () =>
       state
-        ? buildSubTableHandlers(state, commit, showNotice, setEditIndex, setDuePickIndex)
+        ? buildSubTableHandlers(
+            state,
+            commit,
+            showNotice,
+            setEditIndex,
+            setDuePickIndex,
+            requestConfirmation
+          )
         : null,
-    [state, commit, showNotice]
+    [state, commit, showNotice, requestConfirmation]
   );
 
   const expiredSubHandlers = useMemo(
     () =>
       state
-        ? buildSubTableHandlers(state, commit, showNotice, setEditIndex, setDuePickIndex, {
-            renewNotice: false,
-          })
+        ? buildSubTableHandlers(
+            state,
+            commit,
+            showNotice,
+            setEditIndex,
+            setDuePickIndex,
+            requestConfirmation,
+            { renewNotice: false }
+          )
         : null,
-    [state, commit, showNotice]
+    [state, commit, showNotice, requestConfirmation]
   );
 
   const closeSubModal = useCallback(() => {
@@ -338,9 +358,11 @@ export default function App() {
         ? {
             category: editRow.category,
             purchaseChannel: editRow.purchaseChannel,
+            provider: editRow.provider ?? "",
             billingModel: editRow.billingModel,
             plan: editRow.plan,
             fee: editRow.fee,
+            actualFee: editRow.actualFee ?? "",
             subscribedAt: editRow.subscribedAt,
             dueDate: editRow.dueDate,
             usage: editRow.usage,
@@ -499,17 +521,13 @@ export default function App() {
 
         {mode === "subs" && subHandlers && (
           <section className="section">
-            <div className="table-card">
-              <SubTable entries={subsEntries} language={state.language} {...subHandlers} />
-            </div>
+            <SubTable entries={subsEntries} language={state.language} {...subHandlers} />
           </section>
         )}
 
         {mode === "expired" && expiredSubHandlers && (
           <section className="section">
-            <div className="table-card">
-              <SubTable entries={expiredEntries} language={state.language} {...expiredSubHandlers} />
-            </div>
+            <SubTable entries={expiredEntries} language={state.language} {...expiredSubHandlers} />
           </section>
         )}
 
@@ -521,6 +539,7 @@ export default function App() {
             onNotice={showNotice}
             onEdit={openEditBill}
             language={state.language}
+            onRequestConfirmation={requestConfirmation}
           />
         )}
 
@@ -530,11 +549,12 @@ export default function App() {
             pending={pending}
             onCommit={commit}
             showNotice={showNotice}
+            onRequestConfirmation={requestConfirmation}
           />
         )}
       </main>
 
-        {state && subModalMode && subFormDraft && (
+      {state && subModalMode && subFormDraft && (
         <SubscriptionFormModal
           mode={subModalMode}
           draft={subFormDraft}
@@ -545,6 +565,7 @@ export default function App() {
           onClose={closeSubModal}
           onCommit={commit}
           onNotice={showNotice}
+          onRequestConfirmation={requestConfirmation}
         />
       )}
 
@@ -589,8 +610,12 @@ export default function App() {
         <MonitorModal
           state={state}
           onCommit={commit}
+          onRequestConfirmation={requestConfirmation}
           onClose={() => setShowMonitor(false)}
         />
+      )}
+      {confirmation && (
+        <ConfirmDialog {...confirmation} onDismiss={() => setConfirmation(null)} />
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ModalShell, FormFooter } from "./ModalShell";
 
 describe("ModalShell", () => {
@@ -73,7 +73,6 @@ describe("ModalShell", () => {
 
 describe("FormFooter", () => {
   const mockOnCancel = vi.fn();
-  const mockOnSubmit = vi.fn();
 
   beforeEach(() => {
     mockOnCancel.mockClear();

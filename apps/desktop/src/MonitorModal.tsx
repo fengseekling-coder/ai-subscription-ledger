@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { resolveLang, tFor, type Dict } from "./i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { ModalCloseButton } from "./ui/Icon";
+import type { RequestConfirmation } from "./ui/ConfirmDialog";
 
 interface MonitorCheckResult {
   monitorId: string;
@@ -58,9 +59,10 @@ interface Props {
   state: AppState;
   onClose: () => void;
   onCommit: (next: AppState) => void;
+  onRequestConfirmation: RequestConfirmation;
 }
 
-export function MonitorModal({ state, onClose, onCommit }: Props) {
+export function MonitorModal({ state, onClose, onCommit, onRequestConfirmation }: Props) {
   const lang = resolveLang(state.language);
   const t = tFor(lang).monitor;
   // useMemo：`?? []` 每次渲染都会新建数组，会让所有依赖 monitors 的 useCallback 失效。
@@ -128,9 +130,17 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
     setTestResult(null);
   }, [apiKey, selectedService, testResult, state, monitors, onCommit]);
 
-  const removeMonitor = useCallback((monitorId: string) => {
-    onCommit({ ...state, monitors: monitors.filter((m) => m.id !== monitorId) });
-  }, [state, monitors, onCommit]);
+  const requestRemoveMonitor = useCallback((monitorId: string) => {
+    onRequestConfirmation({
+      title: t.remove,
+      message: t.confirmRemove,
+      confirmLabel: t.remove,
+      secondaryLabel: t.cancel,
+      dismissLabel: tFor(lang).common.close,
+      destructive: true,
+      onConfirm: () => onCommit({ ...state, monitors: monitors.filter((m) => m.id !== monitorId) }),
+    });
+  }, [state, monitors, onCommit, onRequestConfirmation, t, lang]);
 
   /** 从 result → updated Monitor */
   const updateMonitorFromResult = (monitor: Monitor, result: MonitorCheckResult, now: string): Monitor => ({
@@ -244,7 +254,7 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
                     <button type="button" className="btn btn--sm" disabled={checkingId === m.id} onClick={() => refreshMonitor(m)}>
                       {checkingId === m.id ? t.checking : t.refresh}
                     </button>
-                    <button type="button" className="btn btn--sm btn--danger" onClick={() => removeMonitor(m.id)}>{t.remove}</button>
+                    <button type="button" className="btn btn--sm btn--danger" onClick={() => requestRemoveMonitor(m.id)}>{t.remove}</button>
                   </div>
                 </div>
               ))}

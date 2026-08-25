@@ -1,5 +1,6 @@
 import { deleteBill, fmtMoney, subById, type AppState, type Bill } from "@ai-sub/core";
 import { resolveLang, tFor } from "./i18n";
+import type { RequestConfirmation } from "./ui/ConfirmDialog";
 
 type Props = {
   state: AppState;
@@ -8,10 +9,12 @@ type Props = {
   onNotice: (text: string, danger?: boolean) => void;
   onEdit: (billId: string) => void;
   language: AppState["language"];
+  onRequestConfirmation: RequestConfirmation;
 };
 
-export function BillsView({ state, bills, onCommit, onNotice, onEdit, language }: Props) {
-  const t = tFor(resolveLang(language)).bills;
+export function BillsView({ state, bills, onCommit, onNotice, onEdit, language, onRequestConfirmation }: Props) {
+  const dict = tFor(resolveLang(language));
+  const t = dict.bills;
   return (
     <section className="section">
       <div className="table-card">
@@ -58,12 +61,20 @@ export function BillsView({ state, bills, onCommit, onNotice, onEdit, language }
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (confirm(t.confirmDelete)) {
-                            onCommit(deleteBill(state, bill.id));
-                            onNotice(t.deleted);
-                          }
-                        }}
+                        onClick={() =>
+                          onRequestConfirmation({
+                            title: t.delete,
+                            message: t.confirmDelete,
+                            confirmLabel: t.delete,
+                            secondaryLabel: dict.form.cancel,
+                            dismissLabel: dict.common.close,
+                            destructive: true,
+                            onConfirm: () => {
+                              onCommit(deleteBill(state, bill.id));
+                              onNotice(t.deleted);
+                            },
+                          })
+                        }
                       >
                         {t.delete}
                       </button>
