@@ -15,7 +15,7 @@
 ~/Library/Application Support/com.azhuilab.subscription-ledger/ledger.db
 ```
 
-首次启动若库为空，**不会**自动塞示例数据，界面会引导你用 **服务库** 添加。产品说明见 [product.md](./product.md)。
+首次启动若库为空，**不会**自动塞示例数据，界面会引导你打开 **新增订阅**。产品说明见 [product.md](./product.md)。
 
 ## 命令
 
@@ -35,7 +35,10 @@ npm run parity           # 固定日期的摘要 JSON（验收对照）
 npm run tauri:build -w @ai-sub/desktop
 ```
 
-产物：`apps/desktop/src-tauri/target/release/bundle/macos/订阅账本.app`
+产物：
+
+- `apps/desktop/src-tauri/target/release/bundle/macos/订阅账本.app`
+- `apps/desktop/src-tauri/target/release/bundle/dmg/订阅账本_*.dmg`
 
 ## 功能
 
@@ -44,13 +47,12 @@ npm run tauri:build -w @ai-sub/desktop
 - 概览 / 已过期 / 账单 / 待续费（3 天内）
 - 本月支出（账单 `paidAt` 自然月）、月预算
 - 续费推进 `dueDate` + `kind: renewal` 账单
-- JSON 导入导出（v3）
+- 订单文本 / JSON 粘贴快速填充，以及剪贴板图片 OCR
 - 系统通知（需点击「提醒」授权）
 
 **Phase 1**
 
-- **HTML 迁移**：工具栏「HTML 迁移」— 粘贴 `localStorage` 副本或选择 `.json` / `.html`
-- **统计**：按分类本月支出、近 6 个月趋势；列表仍用分类色块（官方 / 中转 / 额度包）
+- **统计**：按已有用途分类显示本月支出、近 6 个月趋势；新增订阅默认归为 AI 服务，购买渠道和计费方式可单独管理
 - **菜单栏**：托盘图标显示待续费数量与下一续费；点击「待续费」跳转主窗口
 
 签名分发见 [macos-signing.md](./macos-signing.md)。

@@ -1,4 +1,4 @@
-/** 展示用参考汇率（美元 → 人民币）。仅用于表格约价，不参与预算计算。 */
+/** 离线展示与兼容旧数据的参考汇率（美元 → 人民币）。新入账会保存实际日期的汇率快照。 */
 export const USD_CNY_RATE = 7.2;
 
 export function moneyValue(raw: unknown): number {
@@ -17,10 +17,15 @@ export function moneyValue(raw: unknown): number {
  * （例如账单按 ¥144 入库、统计页的月费参考却按 ¥20 算，同一张表里差 7.2 倍）。
  * 放在 money.ts 而非某个调用方内部，就是为了让 actions / analytics 共用一份口径。
  */
-export function feeToCnyAmount(fee: string | number | null | undefined): number {
+export function feeToCnyAmount(
+  fee: string | number | null | undefined,
+  usdCnyRate = USD_CNY_RATE
+): number {
   const v = moneyValue(fee);
   if (v <= 0) return 0;
-  return looksLikeUsdFee(fee) ? Math.round(v * USD_CNY_RATE * 100) / 100 : v;
+  const rate = Number(usdCnyRate);
+  const usableRate = Number.isFinite(rate) && rate > 0 ? rate : USD_CNY_RATE;
+  return looksLikeUsdFee(fee) ? Math.round(v * usableRate * 100) / 100 : v;
 }
 
 export function fmtMoney(n: number): string {

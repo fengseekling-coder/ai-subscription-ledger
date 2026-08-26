@@ -6,7 +6,7 @@
 
 ## 1. 内测入口问卷（5～8 分钟）
 
-**说明**：内测 0 注册或首次导入后弹出一次；内测 1 结束时可再发短问卷（3 题）。
+**说明**：内测 0 注册或首次新增订阅后弹出一次；内测 1 结束时可再发短问卷（3 题）。
 
 ### A. 背景
 
@@ -52,11 +52,11 @@
 
 | 指标 | 定义 | 参考「值得继续做」 |
 |------|------|-------------------|
-| **D7 留存** | 安装或首次导入后第 7 天仍打开 | ≥25%（垂直工具可接受下限） |
+| **D7 留存** | 安装或首次新增订阅后第 7 天仍打开 | ≥25%（垂直工具可接受下限） |
 | **有效订阅数** | `subscribed && !expired` 条数中位数 | ≥8 |
 | **待续费触达** | 7 日内至少打开 1 次「待续费」或等价视图 | ≥30% 有周期订阅的用户 |
 | **账单闭环** | 至少 1 次「续费」或手动记账单 | ≥40% 活跃用户 |
-| **导入/导出** | 使用过导出或从 v3 导入 | 监控占比，不作硬门槛 |
+| **快速填充** | 使用过订单文本、账本 JSON 或图片 OCR 预填 | 监控占比，不作硬门槛 |
 
 未达阈值时：优先改 **待续费 + 录入摩擦 + 统计可信度**，再考虑连接器。
 
@@ -71,15 +71,14 @@
 | 事件 | 触发时机 | 属性（示例） |
 |------|----------|--------------|
 | `app_open` | 冷启动或壳激活 | `version`, `platform` |
-| `data_import` | 用户导入 JSON | `source`: v3 \| other, `row_count`, `bill_count` |
-| `data_export` | 用户导出 | `row_count`, `bill_count` |
+| `paste_parse` | 解析粘贴文本或 JSON | `source`: order_text \| ledger_json, `row_count`, `bill_count` |
 
 ### 3.2 核心功能
 
 | 事件 | 触发时机 | 属性 |
 |------|----------|------|
-| `subscription_add` | 新增一条 | `segment`（若有） |
-| `subscription_edit` | 模态或表单保存 | `field`: category \| plan \| fee \| due_date \| … |
+| `subscription_add` | 新增一条 | `purchase_channel`、`billing_model` |
+| `subscription_edit` | 模态或表单保存 | `field`: purchase_channel \| billing_model \| plan \| fee \| due_date \| … |
 | `subscription_toggle_subscribed` | 切换已订阅 | `to`: true \| false |
 | `subscription_mark_expired` | 标记过期 | — |
 | `subscription_renew` | 点击已续费 | `has_bill`: bool |

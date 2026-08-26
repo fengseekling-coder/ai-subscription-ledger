@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { resolveLang, tFor, type Dict } from "./i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { ModalCloseButton } from "./ui/Icon";
+import type { RequestConfirmation } from "./ui/ConfirmDialog";
 
 interface MonitorCheckResult {
   monitorId: string;
@@ -17,7 +18,6 @@ interface MonitorCheckResult {
 
 interface MonitorInput {
   id: string;
-  catalogId: string;
   serviceId: string;
   apiKey: string;
 }
@@ -26,7 +26,6 @@ interface SupportedService {
   id: string;
   label: string;
   desc: string;
-  catalogIds: string[];
 }
 
 function maskKey(key: string): string {
@@ -60,9 +59,10 @@ interface Props {
   state: AppState;
   onClose: () => void;
   onCommit: (next: AppState) => void;
+  onRequestConfirmation: RequestConfirmation;
 }
 
-export function MonitorModal({ state, onClose, onCommit }: Props) {
+export function MonitorModal({ state, onClose, onCommit, onRequestConfirmation }: Props) {
   const lang = resolveLang(state.language);
   const t = tFor(lang).monitor;
   // useMemo：`?? []` 每次渲染都会新建数组，会让所有依赖 monitors 的 useCallback 失效。
@@ -115,10 +115,8 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
   const confirmAdd = useCallback(() => {
     if (!apiKey.trim() || !testResult || testResult.status === "error") return;
     const id = newId();
-    const svc = services.find((s) => s.id === selectedService);
-    const catalogId = svc?.catalogIds?.[0] ?? selectedService;
     const newMonitor: Monitor = {
-      id, catalogId, type: "api", apiKey: apiKey.trim(),
+      id, type: "api", apiKey: apiKey.trim(),
       serviceId: selectedService, lastChecked: new Date().toISOString(),
       status: testResult.status as Monitor["status"],
       statusDetail: testResult.statusDetail, remotePlan: testResult.remotePlan,
@@ -130,11 +128,39 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
     setAdding(false);
     setApiKey("");
     setTestResult(null);
-  }, [apiKey, selectedService, testResult, state, monitors, onCommit, services]);
+  }, [apiKey, selectedService, testResult, state, monitors, onCommit]);
 
-  const removeMonitor = useCallback((monitorId: string) => {
-    onCommit({ ...state, monitors: monitors.filter((m) => m.id !== monitorId) });
-  }, [state, monitors, onCommit]);
+  const requestRemoveMonitor = useCallback((monitorId: string) => {
+    onRequestConfirmation({
+      title: t.remove,
+      message: t.confirmRemove,
+      confirmLabel: t.remove,
+      secondaryLabel: t.cancel,
+      dismissLabel: tFor(lang).common.close,
+      destructive: true,
+      onConfirm: () => onCommit({ ...state, monitors: monitors.filter((m) => m.id !== monitorId) }),
+    });
+  }, [state, monitors, onCommit, onRequestConfirmation, t, lang]);
+
+  /** 从 result → updated Monitor */
+  const updateMonitorFromResult = (monitor: Monitor, result: MonitorCheckResult, now: string): Monitor => ({
+    ...monitor,
+    lastChecked: now,
+    status: result.status as Monitor["status"],
+    statusDetail: result.statusDetail,
+    remotePlan: result.remotePlan,
+    remoteAmount: result.remoteAmount,
+    remoteRenewalDate: result.remoteRenewalDate,
+    errorMessage: result.errorMessage,
+  });
+
+  /** 更新单个 monitor，错误处理统一返回带错误状态的 Monitor */
+  const updateMonitorOnError = (monitor: Monitor, e: unknown, now: string): Monitor => ({
+    ...monitor,
+    lastChecked: now,
+    status: "error" as const,
+    errorMessage: e instanceof Error ? e.message : String(e),
+  });
 
   const refreshMonitor = useCallback(async (monitor: Monitor) => {
     setCheckingId(monitor.id);
@@ -142,19 +168,10 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
       const result = await invoke<MonitorCheckResult>("check_monitor_cmd", {
         monitorId: monitor.id, serviceId: monitor.serviceId, apiKey: monitor.apiKey,
       });
-      const updated: Monitor = {
-        ...monitor, lastChecked: new Date().toISOString(),
-        status: result.status as Monitor["status"],
-        statusDetail: result.statusDetail, remotePlan: result.remotePlan,
-        remoteAmount: result.remoteAmount, remoteRenewalDate: result.remoteRenewalDate,
-        errorMessage: result.errorMessage,
-      };
+      const updated = updateMonitorFromResult(monitor, result, new Date().toISOString());
       onCommit({ ...state, monitors: monitors.map((m) => (m.id === monitor.id ? updated : m)) });
     } catch (e) {
-      const updated: Monitor = {
-        ...monitor, lastChecked: new Date().toISOString(), status: "error" as const,
-        errorMessage: e instanceof Error ? e.message : String(e),
-      };
+      const updated = updateMonitorOnError(monitor, e, new Date().toISOString());
       onCommit({ ...state, monitors: monitors.map((m) => (m.id === monitor.id ? updated : m)) });
     } finally {
       setCheckingId(null);
@@ -164,7 +181,7 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
   const refreshAll = useCallback(async () => {
     if (monitors.length === 0) return;
     const inputs: MonitorInput[] = monitors.map((m) => ({
-      id: m.id, catalogId: m.catalogId, serviceId: m.serviceId, apiKey: m.apiKey,
+      id: m.id, serviceId: m.serviceId, apiKey: m.apiKey,
     }));
     try {
       const results = await invoke<MonitorCheckResult[]>("check_all_monitors_cmd", { monitors: inputs });
@@ -172,12 +189,7 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
       const updatedMonitors = monitors.map((m) => {
         const r = results.find((x) => x.monitorId === m.id);
         if (!r) return m;
-        return {
-          ...m, lastChecked: now, status: r.status as Monitor["status"],
-          statusDetail: r.statusDetail, remotePlan: r.remotePlan,
-          remoteAmount: r.remoteAmount, remoteRenewalDate: r.remoteRenewalDate,
-          errorMessage: r.errorMessage,
-        };
+        return updateMonitorFromResult(m, r, now);
       });
       onCommit({ ...state, monitors: updatedMonitors });
     } catch {
@@ -196,17 +208,12 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
             r.status === "fulfilled" && r.value.monitor.id === m.id
         );
         if (!settled) {
-          return { ...m, lastChecked: now, status: "error" as const, // 不本地化：errorMessage 是会被持久化的数据，且同一字段的其他取值来自
-            // Rust 后端（本身就是中文），只翻这一个 JS 兜底反而不一致。
-            errorMessage: "请求失败" };
+          // 不本地化：errorMessage 是会被持久化的数据，且同一字段的其他取值来自
+          // Rust 后端（本身就是中文），只翻这一个 JS 兜底反而不一致。
+          return updateMonitorOnError(m, Error("请求失败"), now);
         }
         const { result } = settled.value;
-        return {
-          ...m, lastChecked: now, status: result.status as Monitor["status"],
-          statusDetail: result.statusDetail, remotePlan: result.remotePlan,
-          remoteAmount: result.remoteAmount, remoteRenewalDate: result.remoteRenewalDate,
-          errorMessage: result.errorMessage,
-        };
+        return updateMonitorFromResult(m, result, now);
       });
       onCommit({ ...state, monitors: updatedMonitors });
     }
@@ -217,15 +224,13 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
   return (
     <div className="modal" role="dialog" aria-modal aria-labelledby="monitor-title">
       <div className="modal__backdrop" onClick={onClose} />
-      <div className="modal__panel catalog-panel">
+      <div className="modal__panel modal__panel--wide">
         <div className="modal__head">
           <h2 id="monitor-title" className="modal__title">{t.title}</h2>
           <ModalCloseButton onClick={onClose} label={tFor(lang).common.close} />
         </div>
         <div className="modal__body">
-          <p className="catalog-hint" style={{ margin: "0 0 var(--space-3)" }}>
-            {t.desc}
-          </p>
+          <p className="modal-description">{t.desc}</p>
 
           {monitors.length > 0 && (
             <div className="monitor-list">
@@ -249,7 +254,7 @@ export function MonitorModal({ state, onClose, onCommit }: Props) {
                     <button type="button" className="btn btn--sm" disabled={checkingId === m.id} onClick={() => refreshMonitor(m)}>
                       {checkingId === m.id ? t.checking : t.refresh}
                     </button>
-                    <button type="button" className="btn btn--sm btn--danger" onClick={() => removeMonitor(m.id)}>{t.remove}</button>
+                    <button type="button" className="btn btn--sm btn--danger" onClick={() => requestRemoveMonitor(m.id)}>{t.remove}</button>
                   </div>
                 </div>
               ))}

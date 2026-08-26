@@ -9,6 +9,25 @@ import {
   type ThemeMode,
 } from "./theme";
 
+interface SettingRowProps {
+  label: string;
+  description?: string;
+  children: React.ReactNode;
+}
+
+/** 通用设置行 */
+export function SettingRow({ label, description, children }: SettingRowProps) {
+  return (
+    <div className="settings-row">
+      <div className="settings-row__text">
+        <span className="settings-row__label">{label}</span>
+        {description && <span className="settings-row__desc">{description}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 interface Props {
   onClose: () => void;
   language: AppState["language"];
@@ -25,7 +44,7 @@ export function SettingsModal({
   onLanguageChange,
   appearance,
   onAppearanceChange,
-  monitorCount,
+  monitorCount: _monitorCount,
   onOpenMonitor,
 }: Props) {
   const t = tFor(resolveLang(language));
@@ -39,11 +58,7 @@ export function SettingsModal({
         </div>
 
         <div className="settings-modal__body">
-          <div className="settings-row">
-            <div className="settings-row__text">
-              <span className="settings-row__label">{t.settings.language}</span>
-              <span className="settings-row__desc">{t.settings.languageDesc}</span>
-            </div>
+          <SettingRow label={t.settings.language} description={t.settings.languageDesc}>
             <div className="seg-nav" role="radiogroup" aria-label={t.settings.language}>
               {LANGS.map((opt) => {
                 const isActive = (language ?? "auto") === opt.value;
@@ -60,14 +75,10 @@ export function SettingsModal({
                   </button>
                 );
               })}
-            </div>
           </div>
+          </SettingRow>
 
-          <div className="settings-row">
-            <div className="settings-row__text">
-              <span className="settings-row__label">{t.settings.themeMode}</span>
-              <span className="settings-row__desc">{t.settings.themeModeDesc}</span>
-            </div>
+          <SettingRow label={t.settings.themeMode} description={t.settings.themeModeDesc}>
             <div className="seg-nav" role="radiogroup" aria-label={t.settings.themeMode}>
               {(["system", "light", "dark"] as ThemeMode[]).map((opt) => {
                 const isActive = (appearance?.mode ?? "system") === opt;
@@ -90,14 +101,10 @@ export function SettingsModal({
                   </button>
                 );
               })}
-            </div>
           </div>
+          </SettingRow>
 
-          <div className="settings-row">
-            <div className="settings-row__text">
-              <span className="settings-row__label">{t.settings.accent}</span>
-              <span className="settings-row__desc">{t.settings.accentDesc}</span>
-            </div>
+          <SettingRow label={t.settings.accent} description={t.settings.accentDesc}>
             <div className="accent-swatches" role="radiogroup" aria-label={t.settings.accent}>
               {ACCENT_ORDER.map((key: AccentKey) => {
                 const isActive = (appearance?.accent ?? "green") === key;
@@ -119,28 +126,20 @@ export function SettingsModal({
                 );
               })}
             </div>
-          </div>
+          </SettingRow>
 
-          <div className="settings-row">
-            <div className="settings-row__text">
-              <span className="settings-row__label">{t.settings.monitorTitle}</span>
-              <span className="settings-row__desc">{t.settings.monitorDesc}</span>
-              {monitorCount > 0 && (
-                <span className="settings-row__hint">{t.settings.monitorConfigured(monitorCount)}</span>
-              )}
-            </div>
+          <SettingRow label={t.settings.monitorTitle} description={t.settings.monitorDesc}>
+            {_monitorCount > 0 && (
+              <span className="settings-row__hint">{t.settings.monitorConfigured(_monitorCount)}</span>
+            )}
             <button type="button" className="btn btn--sm" onClick={onOpenMonitor}>
               {t.settings.monitorManage}
             </button>
-          </div>
+          </SettingRow>
 
-          <div className="settings-row">
-            <div className="settings-row__text">
-              <span className="settings-row__label">{t.settings.security}</span>
-              <span className="settings-row__desc">{t.settings.securityNote1}</span>
-              <span className="settings-row__hint">{t.settings.securityNote2}</span>
-            </div>
-          </div>
+          <SettingRow label={t.settings.security} description={t.settings.securityNote1}>
+            <span className="settings-row__hint">{t.settings.securityNote2}</span>
+          </SettingRow>
         </div>
       </div>
     </div>

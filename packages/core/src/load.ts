@@ -1,15 +1,8 @@
 import { defaultRowsSeed } from "./defaults.js";
 import { normalizeBill, normalizeRow } from "./normalize.js";
-import { moneyValue } from "./money.js";
+import { feeToCnyAmount } from "./money.js";
+import { effectiveFee } from "./rules.js";
 import type { AppState, Bill, Monitor, SubscriptionRow } from "./types.js";
-
-// ── migrated helpers (inlined from old migrate.ts) ───────────────────────────
-
-/** 仅修正已有行（改名、过期标记），不向账本注入新订阅 */
-function applyRowMigrations(rows: SubscriptionRow[]): boolean {
-  void rows;
-  return false;
-}
 
 function parseUsagePaymentDate(row: SubscriptionRow): string {
   const u = String(row.usage || "").trim();
@@ -33,8 +26,8 @@ function parseUsageToBill(row: SubscriptionRow): Bill | null {
     note = "激活码/订单";
   }
   if (!orderId && !paidAt) return null;
-  const amt = moneyValue(row.fee);
-  if (!paidAt) return null;
+  const amt = feeToCnyAmount(effectiveFee(row));
+  if (!(amt > 0) || !paidAt) return null;
   return normalizeBill({
     subscriptionId: row.id,
     amount: amt,
@@ -84,36 +77,76 @@ function ensureBillsFromRows(rows: SubscriptionRow[], bills: Bill[]): Bill[] {
   return out.sort((a, b) => (b.paidAt || "").localeCompare(a.paidAt || ""));
 }
 
-function hydrateImportedState(parsed: {
+function normalizeMonitor(value: unknown): Monitor | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const id = String(raw.id ?? "").trim();
+  const serviceId = String(raw.serviceId ?? "").trim();
+  const apiKey = String(raw.apiKey ?? "").trim();
+  if (!id || !serviceId || !apiKey) return null;
+
+  const status =
+    raw.status === "active" ||
+    raw.status === "expired" ||
+    raw.status === "unknown" ||
+    raw.status === "error"
+      ? raw.status
+      : "unknown";
+  const remoteAmount = Number(raw.remoteAmount);
+
+  return {
+    id,
+    type: raw.type === "browser" ? "browser" : "api",
+    apiKey,
+    serviceId,
+    lastChecked: String(raw.lastChecked ?? ""),
+    status,
+    statusDetail: String(raw.statusDetail ?? ""),
+    remotePlan: String(raw.remotePlan ?? ""),
+    remoteAmount: Number.isFinite(remoteAmount) ? remoteAmount : 0,
+    remoteRenewalDate: String(raw.remoteRenewalDate ?? ""),
+    errorMessage: String(raw.errorMessage ?? ""),
+  };
+}
+
+type ImportedLedger = {
   budget?: unknown;
   rows?: unknown[];
   bills?: unknown[];
-  monitors?: unknown[];
-}): AppState {
+};
+
+function hydrateLedger(parsed: ImportedLedger): Pick<AppState, "budget" | "rows" | "bills"> {
   const rows = (Array.isArray(parsed.rows) ? parsed.rows : []).map((r) =>
     normalizeRow(r as Partial<SubscriptionRow> & Record<string, unknown>)
   );
-  applyRowMigrations(rows);
   const bills = ensureBillsFromRows(
     rows,
     Array.isArray(parsed.bills) ? parsed.bills.map((b) => normalizeBill(b as Partial<Bill>)) : []
   );
   ensureSubscribedAtFromRows(rows, bills);
   const rawBudget = Number(parsed.budget);
-  const budget = Number.isFinite(rawBudget) && rawBudget >= 0 ? rawBudget : 500;
+  return {
+    budget: Number.isFinite(rawBudget) && rawBudget >= 0 ? rawBudget : 500,
+    rows,
+    bills,
+  };
+}
+
+function hydrateImportedState(parsed: ImportedLedger & {
+  monitors?: unknown[];
+}): AppState {
+  const overview = hydrateLedger(parsed);
   const language: AppState["language"] = (() => {
     const raw = (parsed as { language?: unknown }).language;
     return raw === "zh-CN" || raw === "en" || raw === "auto" ? raw : "auto";
   })();
-  const monitors: Monitor[] = Array.isArray(parsed.monitors)
-    ? (parsed.monitors as Monitor[]).filter(
-        (m) => m && typeof m === "object" && m.id && m.catalogId && m.serviceId && m.apiKey
-      )
+  const monitors = Array.isArray(parsed.monitors)
+    ? parsed.monitors
+        .map(normalizeMonitor)
+        .filter((monitor): monitor is Monitor => monitor !== null)
     : [];
   return {
-    budget,
-    rows,
-    bills,
+    ...overview,
     monitors,
     language,
   };
@@ -129,20 +162,23 @@ export function createEmptyState(): AppState {
 /** 开发/单测/parity：带示例订阅（不会自动写入用户数据库） */
 export function createDemoState(): AppState {
   const rows = defaultRowsSeed.map((r) => normalizeRow(r));
-  applyRowMigrations(rows);
   const bills = ensureBillsFromRows(rows, []);
   ensureSubscribedAtFromRows(rows, bills);
   return { budget: 500, rows, bills, monitors: [] };
-}
-
-/** @deprecated 使用 createDemoState（单测）或 createEmptyState（产品） */
-export function createDefaultState(): AppState {
-  return createDemoState();
 }
 
 export function loadFromJson(parsed: unknown): AppState {
   if (!parsed || typeof parsed !== "object") return createEmptyState();
   const p = parsed as { rows?: unknown[] };
   if (!Array.isArray(p.rows)) return createEmptyState();
-  return hydrateImportedState(parsed as { budget?: unknown; rows?: unknown[]; bills?: unknown[] });
+  return hydrateImportedState(
+    parsed as {
+      budget?: unknown;
+      rows?: unknown[];
+      bills?: unknown[];
+      monitors?: unknown[];
+      language?: unknown;
+      appearance?: unknown;
+    }
+  );
 }

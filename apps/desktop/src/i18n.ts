@@ -10,8 +10,8 @@ export const LANGS: { value: LangPref; label: Record<Lang, string> }[] = [
 export type Dict = {
   brand: string;
   common: { close: string };
-  nav: { subs: string; stats: string; expired: string; bills: string; pending: string };
-  toolbar: { add: string; addBill: string; catalog: string; theme: string; settings: string };
+  nav: { subs: string; subscription: string; subscriptionBills: string; stats: string; expired: string; bills: string; pending: string };
+  toolbar: { add: string; addBill: string; theme: string; settings: string };
   dashboard: {
     monthSpend: string;
     budgetLeft: string;
@@ -32,7 +32,7 @@ export type Dict = {
     monitorConnected: (n: number, errors: number) => string;
     monitorNotChecked: string;
   };
-  empty: { title: string; desc: string; add: string; fromCatalog: string };
+  empty: { title: string; desc: string; add: string };
   notice: { copied: string; failed: string; deleted: string; saved: string };
   settings: {
     title: string;
@@ -65,23 +65,51 @@ export type Dict = {
     parseText: string;
     parseOcr: string;
     parsing: string;
-    basic: string;
-    category: string;
+    categoryOptions: Record<
+      | "AI 服务"
+      | "开发工具"
+      | "云服务 / VPS"
+      | "域名 / 网络"
+      | "设计创作"
+      | "办公协作"
+      | "影音娱乐"
+      | "其他",
+      string
+    >;
+    provider: string;
+    providerPlaceholder: string;
+    billingModel: string;
+    billingModelOptions: Record<"月付" | "季付" | "年付" | "按量计费" | "额度包", string>;
+    annualWithSave: (percentOff: number) => string;
     plan: string;
     planPlaceholder: string;
+    selectPlan: string;
+    customPlan: string;
+    backToPresets: string;
+    planLabel: (name: string, fee: string) => string;
+    planLabelPerSeat: (name: string, fee: string) => string;
+    seatsUnit: string;
+    currency: string;
+    currencyCny: string;
+    currencyUsd: string;
     fee: string;
     feePlaceholder: string;
+    actualFee: string;
+    actualFeePlaceholder: string;
+    includeInBudget: string;
+    includeInBudgetDesc: string;
+    renew: string;
+    renewing: string;
+    renewFailed: (reason: string) => string;
     dates: string;
     subDate: string;
     dueDate: string;
+    noRenewalDate: string;
     other: string;
     note: string;
     notePlaceholder: string;
-    subscribed: string;
-    subscribedDesc: string;
-    expired: string;
-    expiredDesc: string;
     delete: string;
+    confirmDeleteAction: string;
     cancel: string;
     add: string;
     save: string;
@@ -89,7 +117,6 @@ export type Dict = {
     saving: string;
     matched: (plan: string) => string;
     feeError: string;
-    categoryRequired: string;
     planRequired: string;
     subDateInvalid: string;
     dueDateInvalid: string;
@@ -101,13 +128,17 @@ export type Dict = {
     noFillable: string;
     restoreFailed: string;
     billAdded: (plan: string, amount: string) => string;
+    billPendingRate: (plan: string, reason: string) => string;
     confirmDelete: (plan: string) => string;
   };
   table: {
-    category: string;
+    billType: string;
+    budgetBill: string;
+    regularBill: string;
     plan: string;
     fee: string;
     note: string;
+    dueDate: string;
     remain: string;
     subscribe: string;
     edit: string;
@@ -123,36 +154,14 @@ export type Dict = {
     dueToday: string;
     overdueDays: (n: number) => string;
     daysLeft: (n: number) => string;
-    /** 已知分类的展示名；自定义分类原样显示。见 categoryLabel.ts */
-    catOfficial: string;
-    catRelay: string;
-    catCredit: string;
-    catOther: string;
+    unrenewedTitle: string;
     unrenewedPrompt: (plan: string) => string;
-    confirmDeleteRow: string;
+    unsubscribe: string;
+    confirmDeleteRow: (plan: string) => string;
     renewedNotice: (plan: string, due: string) => string;
+    renewRateFailed: (reason: string) => string;
     deletedNotice: (plan: string) => string;
     unsubscribedNotice: (plan: string) => string;
-  };
-  catalog: {
-    title: string;
-    searchPlaceholder: string;
-    hint: string;
-    empty: string;
-    segAll: string;
-    segRelay: string;
-    segCredit: string;
-    segDev: string;
-    segDesign: string;
-    segMedia: string;
-    segOffice: string;
-    segCloud: string;
-    badgePaste: string;
-    badgeEmail: string;
-    badgeOauth: string;
-    feeHint: (fee: string) => string;
-    addToWishlist: string;
-    alreadySubscribed: string;
   };
   monitor: {
     title: string;
@@ -167,6 +176,7 @@ export type Dict = {
     checking: string;
     refresh: string;
     remove: string;
+    confirmRemove: string;
     verifyFailed: (msg: string) => string;
     verifyOk: (detail: string) => string;
     cancel: string;
@@ -193,7 +203,6 @@ export type Dict = {
     remindersTurnOn: string;
     pagesNav: string;
     fallbackPlan: string;
-    addedFromCatalog: string;
     langSwitched: string;
   };
   duePicker: {
@@ -260,14 +269,15 @@ export type Dict = {
     save: string;
     added: string;
     saved: string;
+    fxDetail: (usd: number, rate: number, date: string) => string;
   };
 };
 
 const zh: Dict = {
   brand: "订阅账本",
   common: { close: "关闭" },
-  nav: { subs: "概览", stats: "统计", expired: "已过期", bills: "账单", pending: "待续费" },
-  toolbar: { add: "新增订阅", addBill: "记一笔", catalog: "服务库", theme: "深色", settings: "设置" },
+  nav: { subs: "概览", subscription: "订阅", subscriptionBills: "订阅账单", stats: "统计", expired: "已过期", bills: "账单", pending: "待续费" },
+  toolbar: { add: "新增订阅", addBill: "记一笔", theme: "深色", settings: "设置" },
   dashboard: {
     monthSpend: "本月支出",
     budgetLeft: "预算剩余",
@@ -289,7 +299,7 @@ const zh: Dict = {
       errors > 0 ? `${n} 个服务已连接，${errors} 个异常` : `${n} 个服务已连接`,
     monitorNotChecked: "尚未检查",
   },
-  empty: { title: "暂无订阅", desc: "点右上角新增，或从服务库添加", add: "新增订阅", fromCatalog: "从服务库添加" },
+  empty: { title: "暂无订阅", desc: "新增一条订阅开始管理", add: "新增订阅" },
   notice: { copied: "已复制", failed: "操作失败", deleted: "已删除", saved: "已保存" },
   settings: {
     title: "设置",
@@ -322,23 +332,56 @@ const zh: Dict = {
     parseText: "解析文字",
     parseOcr: "粘贴图片 OCR",
     parsing: "识别中…",
-    basic: "基本信息",
-    category: "分类",
+    categoryOptions: {
+      "AI 服务": "AI 服务",
+      "开发工具": "开发工具",
+      "云服务 / VPS": "云服务 / VPS",
+      "域名 / 网络": "域名 / 网络",
+      "设计创作": "设计创作",
+      "办公协作": "办公协作",
+      "影音娱乐": "影音娱乐",
+      "其他": "其他",
+    },
+    provider: "服务商",
+    providerPlaceholder: "选择或输入服务商",
+    billingModel: "计费方式",
+    billingModelOptions: {
+      月付: "月付",
+      季付: "季付",
+      年付: "年付",
+      按量计费: "按量计费",
+      额度包: "额度包",
+    },
+    annualWithSave: (p) => `年付（省 ${p}%）`,
     plan: "套餐 / 额度",
     planPlaceholder: "例如 ChatGPT Plus",
-    fee: "月费",
-    feePlaceholder: "例如 $20 或 29.9",
+    selectPlan: "选择套餐",
+    customPlan: "自定义…",
+    backToPresets: "选择内置套餐",
+    planLabel: (name, fee) => `${name}（$${fee}/月）`,
+    planLabelPerSeat: (name, fee) => `${name}（$${fee}/人/月）`,
+    seatsUnit: "人",
+    currency: "币种",
+    currencyCny: "人民币",
+    currencyUsd: "美元",
+    fee: "金额",
+    feePlaceholder: "例如 20 或 29.9",
+    actualFee: "实付",
+    actualFeePlaceholder: "默认同金额",
+    includeInBudget: "计入预算",
+    includeInBudgetDesc: "关联账单会计入本月预算；关闭后账单仍保留在账单列表。",
+    renew: "续费",
+    renewing: "续费中…",
+    renewFailed: (reason) => `续费失败：${reason}`,
     dates: "日期",
     subDate: "订阅日期",
     dueDate: "续费日期",
+    noRenewalDate: "此计费方式无需续费日期",
     other: "其他",
     note: "备注",
     notePlaceholder: "可选：订单号、账号备注等",
-    subscribed: "已订阅",
-    subscribedDesc: "计入概览与月费统计",
-    expired: "标记为已过期",
-    expiredDesc: "不再计入月费",
     delete: "删除",
+    confirmDeleteAction: "确认删除",
     cancel: "取消",
     add: "添加",
     save: "保存",
@@ -346,7 +389,6 @@ const zh: Dict = {
     saving: "保存中…",
     matched: (plan) => `已匹配「${plan}」，确认后将为其添加账单`,
     feeError: "金额格式无效",
-    categoryRequired: "请选择分类",
     planRequired: "请填写套餐名称",
     subDateInvalid: "订阅日期格式无效",
     dueDateInvalid: "续费日期格式无效",
@@ -358,14 +400,18 @@ const zh: Dict = {
     noFillable: "未识别到可填充的字段",
     restoreFailed: "恢复订阅失败",
     billAdded: (plan, amount) => `已为「${plan}」添加账单 ${amount} 元`,
-    confirmDelete: (plan) => `确定删除「${plan}」？`,
+    billPendingRate: (plan, reason) => `已保存「${plan}」，但未能按付款日查询美元汇率，因此暂未自动入账：${reason}`,
+    confirmDelete: (plan) => `确定删除「${plan}」及其关联账单？`,
   },
   table: {
-    category: "分类",
+    billType: "账单分类",
+    budgetBill: "预算账单",
+    regularBill: "普通账单",
     plan: "套餐",
     fee: "金额",
     note: "备注",
-    remain: "剩余",
+    dueDate: "到期时间",
+    remain: "状态",
     subscribe: "订阅",
     edit: "编辑",
     nonCycle: "非周期",
@@ -380,36 +426,15 @@ const zh: Dict = {
     dueToday: "今天到期",
     overdueDays: (n) => `已过期 ${n} 天`,
     daysLeft: (n) => `剩余 ${n} 天`,
-    catOfficial: "官方",
-    catRelay: "中转",
-    catCredit: "额度",
-    catOther: "其他",
+    unrenewedTitle: "未续费",
     unrenewedPrompt: (plan) =>
-      `${plan} 未续费：删除条目，还是改为未订阅？\n确定 = 删除，取消 = 改为未订阅`,
-    confirmDeleteRow: "确定删除这一行？",
+      `「${plan}」未续费。删除订阅及关联账单，还是改为未订阅？`,
+    unsubscribe: "改为未订阅",
+    confirmDeleteRow: (plan) => `确定删除「${plan}」及其关联账单？`,
     renewedNotice: (plan, due) => `${plan} 已续费，续费日 → ${due}`,
+    renewRateFailed: (reason) => `未能按付款日获取美元汇率，续费未入账：${reason}`,
     deletedNotice: (plan) => `${plan} 已删除。`,
     unsubscribedNotice: (plan) => `${plan} 已改为未订阅。`,
-  },
-  catalog: {
-    title: "服务库",
-    searchPlaceholder: "搜索 ChatGPT、Cursor、中转…",
-    hint: "支持自动入账的排在前面（粘贴 JSON / 订单文本）。不含日常网购与银行流水。",
-    empty: "没有匹配的服务，可用「新增订阅」自定义。",
-    segAll: "全部",
-    segRelay: "中转",
-    segCredit: "额度包",
-    segDev: "开发",
-    segDesign: "设计",
-    segMedia: "影音",
-    segOffice: "办公",
-    segCloud: "云",
-    badgePaste: "可粘贴入账",
-    badgeEmail: "邮件（规划）",
-    badgeOauth: "可自动监控",
-    feeHint: (fee) => `参考 ¥${fee}`,
-    addToWishlist: "加入清单",
-    alreadySubscribed: "已订阅",
   },
   monitor: {
     title: "自动监控",
@@ -424,6 +449,7 @@ const zh: Dict = {
     checking: "检查中…",
     refresh: "刷新",
     remove: "删除",
+    confirmRemove: "确定移除此自动监控？",
     verifyFailed: (msg) => `验证失败: ${msg}`,
     verifyOk: (detail) => `验证通过 — ${detail}`,
     cancel: "取消",
@@ -450,7 +476,6 @@ const zh: Dict = {
     remindersTurnOn: "开启续费提醒",
     pagesNav: "页面",
     fallbackPlan: "订阅",
-    addedFromCatalog: "已从服务库添加",
     langSwitched: "语言：简体中文",
   },
   duePicker: {
@@ -517,14 +542,15 @@ const zh: Dict = {
     save: "保存",
     added: "已添加账单",
     saved: "账单已保存",
+    fxDetail: (usd, rate, date) => `US$${usd} × ${rate} · ${date} 汇率`,
   },
-};
+  };
 
 const en: Dict = {
   brand: "Subscription Ledger",
   common: { close: "Close" },
-  nav: { subs: "Overview", stats: "Stats", expired: "Expired", bills: "Bills", pending: "Renewals" },
-  toolbar: { add: "Add", addBill: "Add bill", catalog: "Catalog", theme: "Theme", settings: "Settings" },
+  nav: { subs: "Overview", subscription: "Subscriptions", subscriptionBills: "Subscription bills", stats: "Stats", expired: "Expired", bills: "Bills", pending: "Renewals" },
+  toolbar: { add: "Add", addBill: "Add bill", theme: "Theme", settings: "Settings" },
   dashboard: {
     monthSpend: "This month",
     budgetLeft: "Budget left",
@@ -546,7 +572,7 @@ const en: Dict = {
       errors > 0 ? `${n} connected, ${errors} failing` : `${n} connected`,
     monitorNotChecked: "Not checked yet",
   },
-  empty: { title: "No subscriptions yet", desc: "Add from the toolbar, or pick from the catalog", add: "Add subscription", fromCatalog: "From catalog" },
+  empty: { title: "No subscriptions yet", desc: "Add a subscription to start tracking", add: "Add subscription" },
   notice: { copied: "Copied", failed: "Failed", deleted: "Deleted", saved: "Saved" },
   settings: {
     title: "Settings",
@@ -579,23 +605,56 @@ const en: Dict = {
     parseText: "Parse text",
     parseOcr: "Paste image (OCR)",
     parsing: "Reading…",
-    basic: "Basics",
-    category: "Category",
+    categoryOptions: {
+      "AI 服务": "AI services",
+      "开发工具": "Developer tools",
+      "云服务 / VPS": "Cloud / VPS",
+      "域名 / 网络": "Domains / network",
+      "设计创作": "Design & creation",
+      "办公协作": "Productivity",
+      "影音娱乐": "Media",
+      "其他": "Other",
+    },
+    provider: "Provider",
+    providerPlaceholder: "Select or type a provider",
+    billingModel: "Billing model",
+    billingModelOptions: {
+      月付: "Monthly",
+      季付: "Quarterly",
+      年付: "Annual",
+      按量计费: "Usage-based",
+      额度包: "Credit pack",
+    },
+    annualWithSave: (p) => `Annual (${p}% off)`,
     plan: "Plan / credits",
     planPlaceholder: "e.g. ChatGPT Plus",
-    fee: "Monthly fee",
-    feePlaceholder: "e.g. $20 or 29.9",
+    selectPlan: "Select a plan",
+    customPlan: "Custom…",
+    backToPresets: "Pick a built-in plan",
+    planLabel: (name, fee) => `${name} ($${fee}/mo)`,
+    planLabelPerSeat: (name, fee) => `${name} ($${fee}/seat/mo)`,
+    seatsUnit: "seats",
+    currency: "Currency",
+    currencyCny: "RMB",
+    currencyUsd: "USD",
+    fee: "Amount",
+    feePlaceholder: "e.g. 20 or 29.9",
+    actualFee: "Actual paid",
+    actualFeePlaceholder: "Defaults to amount",
+    includeInBudget: "Include in budget",
+    includeInBudgetDesc: "Linked bills count toward this month's budget. Turn it off to keep bills without counting them.",
+    renew: "Renew",
+    renewing: "Renewing…",
+    renewFailed: (reason) => `Renewal failed: ${reason}`,
     dates: "Dates",
     subDate: "Subscribed on",
     dueDate: "Next renewal",
+    noRenewalDate: "No renewal date for this billing model",
     other: "Other",
     note: "Note",
     notePlaceholder: "Optional: order id, account note…",
-    subscribed: "Subscribed",
-    subscribedDesc: "Count in overview and monthly total",
-    expired: "Mark expired",
-    expiredDesc: "Excluded from monthly total",
     delete: "Delete",
+    confirmDeleteAction: "Confirm delete",
     cancel: "Cancel",
     add: "Add",
     save: "Save",
@@ -603,7 +662,6 @@ const en: Dict = {
     saving: "Saving…",
     matched: (plan) => `Matched “${plan}” — submitting will add a bill to it`,
     feeError: "Invalid amount",
-    categoryRequired: "Pick a category",
     planRequired: "Enter a plan name",
     subDateInvalid: "Invalid subscription date",
     dueDateInvalid: "Invalid renewal date",
@@ -615,13 +673,17 @@ const en: Dict = {
     noFillable: "Nothing recognized to fill in",
     restoreFailed: "Could not restore the subscription",
     billAdded: (plan, amount) => `Added a ¥${amount} bill for ${plan}`,
-    confirmDelete: (plan) => `Delete ${plan}?`,
+    billPendingRate: (plan, reason) => `Saved ${plan}, but could not look up its USD exchange rate for the payment date, so it was not auto-recorded: ${reason}`,
+    confirmDelete: (plan) => `Delete ${plan} and its linked bills?`,
   },
   table: {
-    category: "Category",
+    billType: "Bill type",
+    budgetBill: "Budget bill",
+    regularBill: "Regular bill",
     plan: "Plan",
     fee: "Fee",
     note: "Note",
+    dueDate: "Expires",
     remain: "Status",
     subscribe: "Subscribe",
     edit: "Edit",
@@ -637,36 +699,15 @@ const en: Dict = {
     dueToday: "Due today",
     overdueDays: (n) => (n === 1 ? "1 day overdue" : `${n} days overdue`),
     daysLeft: (n) => (n === 1 ? "1 day left" : `${n} days left`),
-    catOfficial: "Official",
-    catRelay: "Relay",
-    catCredit: "Credits",
-    catOther: "Other",
+    unrenewedTitle: "Not renewed",
     unrenewedPrompt: (plan) =>
-      `${plan} was not renewed. Delete the entry, or mark it unsubscribed?\nOK = delete, Cancel = mark unsubscribed`,
-    confirmDeleteRow: "Delete this row?",
+      `${plan} was not renewed. Delete the subscription and its linked bills, or mark it unsubscribed?`,
+    unsubscribe: "Mark unsubscribed",
+    confirmDeleteRow: (plan) => `Delete ${plan} and its linked bills?`,
     renewedNotice: (plan, due) => `${plan} renewed — next due ${due}`,
+    renewRateFailed: (reason) => `Could not get the USD exchange rate for the payment date, so the renewal was not recorded: ${reason}`,
     deletedNotice: (plan) => `${plan} deleted.`,
     unsubscribedNotice: (plan) => `${plan} marked unsubscribed.`,
-  },
-  catalog: {
-    title: "Catalog",
-    searchPlaceholder: "Search ChatGPT, Cursor, relays…",
-    hint: "Services with automatic bill capture come first (paste JSON / order text). Everyday shopping and bank statements are out of scope.",
-    empty: "No matching service — use “Add subscription” to create your own.",
-    segAll: "All",
-    segRelay: "Relay",
-    segCredit: "Credits",
-    segDev: "Dev",
-    segDesign: "Design",
-    segMedia: "Media",
-    segOffice: "Office",
-    segCloud: "Cloud",
-    badgePaste: "Paste to bill",
-    badgeEmail: "Email (planned)",
-    badgeOauth: "Auto-monitored",
-    feeHint: (fee) => `approx ¥${fee}`,
-    addToWishlist: "Add to wishlist",
-    alreadySubscribed: "Subscribed",
   },
   monitor: {
     title: "Automatic monitoring",
@@ -681,6 +722,7 @@ const en: Dict = {
     checking: "Checking…",
     refresh: "Refresh",
     remove: "Remove",
+    confirmRemove: "Remove this automatic monitor?",
     verifyFailed: (msg) => `Verification failed: ${msg}`,
     verifyOk: (detail) => `Verified — ${detail}`,
     cancel: "Cancel",
@@ -707,7 +749,6 @@ const en: Dict = {
     remindersTurnOn: "Turn on renewal reminders",
     pagesNav: "Pages",
     fallbackPlan: "subscription",
-    addedFromCatalog: "Added from the catalog",
     langSwitched: "Language: English",
   },
   duePicker: {
@@ -775,6 +816,7 @@ const en: Dict = {
     save: "Save",
     added: "Bill added",
     saved: "Bill saved",
+    fxDetail: (usd, rate, date) => `US$${usd} × ${rate} · rate date ${date}`,
   },
 };
 

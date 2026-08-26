@@ -1,20 +1,53 @@
+/** 账单类型：支付 or 续费 */
 export type BillKind = "payment" | "renewal";
 
+/** 账单原始币种。账单 amount 始终以人民币入账。 */
+export type BillCurrency = "CNY" | "USD";
+
+/** 订阅分类 */
+export type SubscriptionCategory =
+  | "AI 服务"
+  | "开发工具"
+  | "云服务 / VPS"
+  | "域名 / 网络"
+  | "设计创作"
+  | "办公协作"
+  | "影音娱乐"
+  | "其他";
+
+/** 购买渠道 */
+export type PurchaseChannel = "官方" | "中转";
+
+/** 计费方式：额度包与按量计费均无需续费日 */
+export type BillingModel = "月付" | "季付" | "年付" | "按量计费" | "额度包";
+
+/** 订阅记录行 */
 export interface SubscriptionRow {
   id: string;
+  /** 使用场景分类 */
   category: string;
+  /** 购买来源 */
+  purchaseChannel: PurchaseChannel;
+  /** 服务商名称；旧记录为空时由套餐名称推断内置服务商。 */
+  provider?: string;
+  /** 计费方式 */
+  billingModel: BillingModel;
   plan: string;
   fee: string;
+  /** 实付金额（可选）。设置后（含 "0"）优先于 fee 作为每周期实际入账金额；空串/未定义 = 未设置，回退用 fee */
+  actualFee?: string;
+  /** 是否将关联账单计入预算；关闭后账单仍保留在账单列表中。 */
+  includeInBudget: boolean;
+  /** 首笔订阅账单已经处理过（含用户主动删除），用于防止迁移或启动时重复入账。 */
+  initialBillRecorded?: boolean;
   subscribed: boolean;
   dueDate: string;
   subscribedAt: string;
   expired: boolean;
   usage: string;
-  segment?: string;
-  subscribeUrl?: string;
-  portalUrl?: string;
 }
 
+/** 账单 */
 export interface Bill {
   id: string;
   subscriptionId: string;
@@ -23,53 +56,49 @@ export interface Bill {
   orderId: string;
   note: string;
   kind: BillKind;
+  /** 原始付款金额；金额栏 amount 始终保存换算后的人民币。 */
+  originalAmount?: number;
+  originalCurrency?: BillCurrency;
+  /** 美元账单在入账时锁定的 USD → CNY 汇率。 */
+  exchangeRate?: number;
+  /** 汇率数据实际生效的交易日（周末/节假日会回退至最近发布日）。 */
+  exchangeRateDate?: string;
+  /** 汇率来源，便于账单追溯。 */
+  exchangeRateSource?: string;
 }
 
-/** 自动监控：连接到远程 API 检查订阅状态 */
+/** 自动监控配置：连接到远程 API 检查订阅状态 */
 export interface Monitor {
   id: string;
-  /** 关联服务库条目 id，如 "chatgpt-plus" */
-  catalogId: string;
-  /** 监控类型：api = 通过官方 API 查询；browser = 浏览器自动化（预留） */
   type: "api" | "browser";
-  /** API Key（明文存储于内存，落盘时由 db.rs 做 AES-256-GCM 加密） */
   apiKey: string;
-  /** 服务端点标识，如 "openai", "anthropic", "cursor" */
   serviceId: string;
-  /** 上次检查时间 ISO */
   lastChecked: string;
-  /** 当前状态 */
   status: "active" | "expired" | "unknown" | "error";
-  /** 状态说明文字 */
   statusDetail: string;
-  /** 远端返回的套餐名 */
   remotePlan: string;
-  /** 远端返回的金额（分） */
   remoteAmount: number;
-  /** 远端返回的续费日 */
   remoteRenewalDate: string;
-  /** 最后一次查询的错误信息 */
   errorMessage: string;
 }
 
+/** 应用状态 */
 export interface AppState {
   budget: number;
   rows: SubscriptionRow[];
   bills: Bill[];
-  /** 自动监控列表 */
   monitors: Monitor[];
-  /** UI language preference; "auto" follows system locale. */
   language?: "auto" | "zh-CN" | "en";
-  /** 外观偏好：主题模式 + 强调色 */
   appearance?: AppearancePref;
 }
 
-/** 外观偏好。mode 默认跟随系统；accent 为强调色键名（由前端 theme 模块解释）。 */
+/** 外观偏好 */
 export interface AppearancePref {
   mode?: "system" | "light" | "dark";
   accent?: string;
 }
 
+/** 统计摘要 */
 export interface Summary {
   monthSpend: number;
   budget: number;

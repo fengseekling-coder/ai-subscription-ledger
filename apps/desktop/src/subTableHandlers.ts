@@ -1,16 +1,21 @@
 import {
   clearExpired,
   deleteRow,
+  effectiveFee,
+  formatDate,
+  looksLikeUsdFee,
   markExpired,
   markUnrenewed,
   renewRow,
   subscribeNoticeAfterToggle,
   toggleSubscribe,
   type AppState,
+  type UsdCnyRateSnapshot,
 } from "@ai-sub/core";
 import { resolveLang, tFor } from "./i18n";
+import { getUsdCnyRate, usdRateSnapshot } from "./exchangeRate";
 import type { SubTableHandlers } from "./SubTable";
-import { confirmUnrenewedOrDelete } from "./SubTable";
+import type { RequestConfirmation } from "./ui/ConfirmDialog";
 
 export function buildSubTableHandlers(
   state: AppState,
@@ -18,10 +23,23 @@ export function buildSubTableHandlers(
   showNotice: (text: string, danger?: boolean) => void,
   setEditIndex: (i: number) => void,
   setDuePickIndex: (i: number) => void,
+  requestConfirmation: RequestConfirmation,
   options?: { renewNotice?: boolean }
 ): SubTableHandlers {
   const t = tFor(resolveLang(state.language)).table;
   const renewNotice = options?.renewNotice !== false;
+
+  /** 执行动作并处理错误与提交。 */
+  const runAction = <T extends AppState>(action: () => T | { error: string }, onResult: (result: T) => void) => {
+    const result = action();
+    if ("error" in result) {
+      showNotice(result.error, true);
+      return;
+    }
+    commit(result);
+    onResult(result as T);
+  };
+
   return {
     onToggle: (i) => {
       const next = toggleSubscribe(state, i);
@@ -35,67 +53,70 @@ export function buildSubTableHandlers(
     },
     onEdit: setEditIndex,
     onPickDue: setDuePickIndex,
-    onRenew: (i) => {
-      const next = renewRow(state, i);
-      if ("error" in next) {
-        showNotice(next.error, true);
-        return;
+    onRenew: async (i) => {
+      const row = state.rows[i];
+      if (!row) return;
+      const ref = new Date();
+      let usdCnyRate: UsdCnyRateSnapshot | undefined;
+      if (looksLikeUsdFee(effectiveFee(row))) {
+        try {
+          usdCnyRate = usdRateSnapshot(await getUsdCnyRate(formatDate(ref)));
+        } catch (error) {
+          showNotice(
+            t.renewRateFailed(error instanceof Error ? error.message : "未知错误"),
+            true
+          );
+          return;
+        }
       }
-      commit(next);
-      if (renewNotice) {
-        showNotice(t.renewedNotice(next.rows[i].plan, next.rows[i].dueDate));
-      }
+      runAction(() => renewRow(state, i, ref, usdCnyRate), (result) => {
+        if (renewNotice) {
+          showNotice(t.renewedNotice(result.rows[i].plan, result.rows[i].dueDate));
+        }
+      });
     },
     onMarkUnrenewed: (i) => {
       const row = state.rows[i];
-      confirmUnrenewedOrDelete(
-        row.plan,
-        () => {
-          const result = deleteRow(state, i);
-          if ("error" in result) {
-            showNotice(result.error, true);
-            return;
-          }
-          commit(result);
-          showNotice(t.deletedNotice(row.plan));
+      if (!row) return;
+      requestConfirmation({
+        title: t.unrenewedTitle,
+        message: t.unrenewedPrompt(row.plan),
+        confirmLabel: t.delete,
+        secondaryLabel: t.unsubscribe,
+        dismissLabel: tFor(resolveLang(state.language)).common.close,
+        destructive: true,
+        onConfirm: () => {
+          runAction(() => deleteRow(state, i), () => {
+            showNotice(t.deletedNotice(row.plan));
+          });
         },
-        () => {
-          const result = markUnrenewed(state, i, "unsubscribe");
-          if ("error" in result) {
-            showNotice(result.error, true);
-            return;
-          }
-          commit(result);
-          showNotice(t.unsubscribedNotice(row.plan));
+        onSecondary: () => {
+          runAction(() => markUnrenewed(state, i, "unsubscribe"), (_result) => {
+            showNotice(t.unsubscribedNotice(row.plan));
+          });
         },
-        state.language
-      );
+      });
     },
     onMarkExpired: (i) => {
-      const result = markExpired(state, i);
-      if ("error" in result) {
-        showNotice(result.error, true);
-        return;
-      }
-      commit(result);
+      runAction(() => markExpired(state, i), () => {});
     },
     onClearExpired: (i) => {
-      const result = clearExpired(state, i);
-      if ("error" in result) {
-        showNotice(result.error, true);
-        return;
-      }
-      commit(result);
+      runAction(() => clearExpired(state, i), () => {});
     },
     onDelete: (i) => {
-      if (confirm(t.confirmDeleteRow)) {
-        const result = deleteRow(state, i);
-        if ("error" in result) {
-          showNotice(result.error, true);
-          return;
-        }
-        commit(result);
-      }
+      const row = state.rows[i];
+      if (!row) return;
+      requestConfirmation({
+        title: t.delete,
+        message: t.confirmDeleteRow(row.plan),
+        confirmLabel: t.delete,
+        secondaryLabel: t.cancel,
+        dismissLabel: tFor(resolveLang(state.language)).common.close,
+        destructive: true,
+        onConfirm: () => runAction(() => deleteRow(state, i), () => {
+          showNotice(t.deletedNotice(row.plan));
+        }),
+      });
     },
   };
 }

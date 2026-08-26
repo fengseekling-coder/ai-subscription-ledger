@@ -1,8 +1,11 @@
 import {
+  addBillWithDetails,
+  addInitialBillWithDetails,
   addRowWithDetails,
   deleteRow,
+  effectiveFee,
+  markInitialBillsRecorded,
   moneyValue,
-  normalizeBill,
   normalizeEnglishMonthDate,
   runConnectorPaste,
   subById,
@@ -17,26 +20,88 @@ import { invoke } from "@tauri-apps/api/core";
 import { readImage } from "@tauri-apps/plugin-clipboard-manager";
 import { useEffect, useRef, useState } from "react";
 import { CalendarPicker } from "./CalendarPicker";
-import { categoryLabel } from "./categoryLabel";
+import { billDraftFromSubscriptionCharge } from "./exchangeRate";
 import { resolveLang, tFor } from "./i18n";
+import {
+  BILLING_MODEL_VALUES,
+  CUSTOM_PLAN_VALUE,
+  PROVIDERS,
+  annualSaving,
+  billingModelNeedsDueDate,
+  defaultCategoryForProvider,
+  defaultProviderForPlan,
+  firstCycleOf,
+  formDefaultsFromCategory,
+  isCustomPlanMode,
+  parseSeatPlan,
+  totalPriceForCycle,
+  type BillingModel,
+  type ProviderPlan,
+} from "./subscriptionFields";
 import { Icon, ModalCloseButton } from "./ui/Icon";
+import type { RequestConfirmation } from "./ui/ConfirmDialog";
 
 export type SubscriptionFormDraft = {
   category: string;
+  purchaseChannel?: SubscriptionRow["purchaseChannel"];
+  provider?: SubscriptionRow["provider"];
+  billingModel?: SubscriptionRow["billingModel"];
   plan: string;
   fee: string;
+  actualFee?: string;
   subscribedAt: string;
   dueDate: string;
   usage: string;
   subscribed: boolean;
   expired: boolean;
+  includeInBudget: boolean;
 };
 
-/**
- * 分类选项。value 是写进账本的**数据值**，必须保持中文原样；
- * 只有 label 走字典本地化（与 SubTable 的 getCategoryStyle 同一套规则）。
- */
-const CATEGORY_VALUES = ["官方", "中转", "中转额度包", "其他"] as const;
+type Currency = "CNY" | "USD";
+type RenewHandlerResult = AppState | void;
+type RenewHandler = (
+  index: number
+) => RenewHandlerResult | PromiseLike<RenewHandlerResult>;
+
+const USD_PREFIX_RE = /^\s*(?:\$|US\$|USD)/i;
+const AMOUNT_PREFIX_RE = /^\s*(?:(?:USD|U\.?S\.?|US)\s*\$?|\$|¥|￥)\s*/i;
+
+function isUsdAmount(raw: string | undefined): boolean {
+  return USD_PREFIX_RE.test(String(raw ?? ""));
+}
+
+function currencyForDraft(draft: SubscriptionFormDraft, isAdd: boolean): Currency {
+  if (isAdd) return "CNY";
+  return isUsdAmount(draft.fee) || isUsdAmount(draft.actualFee) ? "USD" : "CNY";
+}
+
+/** Form fields display the numeric amount while persistence retains the selected currency. */
+function amountInputValue(raw: string | undefined): string {
+  return String(raw ?? "").trim().replace(AMOUNT_PREFIX_RE, "");
+}
+
+function persistedAmountValue(raw: string, currency: Currency): string {
+  const amount = amountInputValue(raw);
+  if (!amount) return "";
+  return currency === "USD" ? `US$${amount}` : amount;
+}
+
+function builtInProviderForName(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+  return (
+    PROVIDERS.find(
+      (item) => item.id.toLowerCase() === normalized || item.label.toLowerCase() === normalized
+    ) ?? null
+  );
+}
+
+function providerNameForDraft(draft: SubscriptionFormDraft): string {
+  const stored = draft.provider?.trim();
+  if (stored) return stored;
+  const inferredId = defaultProviderForPlan(draft.plan);
+  return PROVIDERS.find((item) => item.id === inferredId)?.label ?? "";
+}
 
 /** 从解析结果提取表单字段值，autoMatch 为 true 时自动匹配已有订阅 */
 function extractFields(
@@ -49,7 +114,6 @@ function extractFields(
   usage?: string;
   subscribedAt?: string;
   dueDate?: string;
-  category?: string;
   matchedSubId?: string;
   matchedPlan?: string;
 } {
@@ -59,7 +123,6 @@ function extractFields(
     usage?: string;
     subscribedAt?: string;
     dueDate?: string;
-    category?: string;
     matchedSubId?: string;
     matchedPlan?: string;
   } = {};
@@ -96,7 +159,6 @@ function extractFields(
       if (row.plan) out.plan = String(row.plan);
       if (row.fee) out.fee = String(row.fee);
       if (row.usage) out.usage = String(row.usage);
-      if (row.category) out.category = String(row.category);
     }
   } catch {
     /* not JSON */
@@ -115,7 +177,6 @@ function extractFields(
     if (!out.plan && row.plan) out.plan = row.plan;
     if (!out.fee && row.fee) out.fee = String(row.fee);
     if (!out.usage && row.usage) out.usage = row.usage;
-    if (!out.category && row.category) out.category = row.category;
   }
 
   // 直接正则补充
@@ -147,9 +208,6 @@ function extractFields(
     if (exactMatch) {
       out.matchedSubId = exactMatch.id;
       out.matchedPlan = exactMatch.plan;
-      if (!out.category || out.category === "官方") {
-        out.category = exactMatch.category;
-      }
       if (!out.fee) {
         out.fee = exactMatch.fee;
       }
@@ -163,9 +221,6 @@ function extractFields(
       if (partialMatch) {
         out.matchedSubId = partialMatch.id;
         out.matchedPlan = partialMatch.plan;
-        if (!out.category || out.category === "官方") {
-          out.category = partialMatch.category;
-        }
         if (!out.fee) {
           out.fee = partialMatch.fee;
         }
@@ -185,6 +240,9 @@ export function SubscriptionFormModal({
   language,
   onClose,
   onCommit,
+  onNotice,
+  onRenew,
+  onRequestConfirmation,
 }: {
   mode: "add" | "edit";
   draft: SubscriptionFormDraft;
@@ -195,6 +253,8 @@ export function SubscriptionFormModal({
   onClose: () => void;
   onCommit: (next: AppState) => void;
   onNotice: (text: string, danger?: boolean) => void;
+  onRenew?: RenewHandler;
+  onRequestConfirmation: RequestConfirmation;
 }) {
   const ft = tFor(resolveLang(language));
   const isAdd = mode === "add";
@@ -225,22 +285,61 @@ export function SubscriptionFormModal({
     dueDate?: string;
   }>({});
   const [feeError, setFeeError] = useState<string | null>(null);
-  const [subscribedChecked, setSubscribedChecked] = useState(draft.subscribed);
-  const [category, setCategory] = useState(draft.category || "官方");
+  const [includeInBudgetChecked, setIncludeInBudgetChecked] = useState(draft.includeInBudget);
+  const legacyConcepts = formDefaultsFromCategory(draft.category);
+  const [purchaseChannel] = useState(
+    draft.purchaseChannel ?? legacyConcepts.purchaseChannel
+  );
+  const [provider, setProvider] = useState<string>(() => providerNameForDraft(draft));
+  const [planValue, setPlanValue] = useState(
+    () => parseSeatPlan(draft.plan)?.name ?? draft.plan
+  );
+  const [planCustom, setPlanCustom] = useState(() => isCustomPlanMode(draft.plan));
+  // 人数输入框用字符串状态：允许用户先清空再输入（如 2→5），
+  // 若输入时立刻 clamp 回 1，清空后框里会马上跳回 "1"，再键入 5 就变成 "15"。
+  const [seatsText, setSeatsText] = useState(
+    () => String(parseSeatPlan(draft.plan)?.seats ?? 2)
+  );
+  /** 计算与提交用的实际人数（clamp 到 1–999）；输入为空/非法时回退 1 */
+  const seats = Math.max(1, Math.min(999, Math.round(Number(seatsText)) || 1));
+  const [billingModel, setBillingModel] = useState<BillingModel>(
+    draft.billingModel ?? legacyConcepts.billingModel
+  );
+  const [currency, setCurrency] = useState<Currency>(() => currencyForDraft(draft, isAdd));
+  const dueDateRequired = billingModelNeedsDueDate(billingModel);
+  const category = isAdd ? defaultCategoryForProvider(provider) : legacyConcepts.category;
+  const modalResetKey = `${mode}:${editIndex ?? "new"}`;
+  const modalResetKeyRef = useRef<string | null>(null);
+  const previousDraftDueDateRef = useRef(draft.dueDate);
 
-  // 切换新增/编辑目标时重置整个表单。React 推荐的写法是让父组件传 key 强制重挂，
-  // 那要改 App.tsx 的调用点并核对全部 8 处表单状态的初值，单独做更稳妥。
-  /* eslint-disable react-hooks/set-state-in-effect -- 表单重置，应改为父级传 key 重挂 */
   useEffect(() => {
+    if (modalResetKeyRef.current === modalResetKey) return;
+    modalResetKeyRef.current = modalResetKey;
+    const legacyDefaults = formDefaultsFromCategory(draft.category);
+    const nextConcepts = {
+      billingModel: draft.billingModel ?? legacyDefaults.billingModel,
+    };
     setMatchedSub(null);
-    setSubscribedChecked(draft.subscribed);
-    setCategory(draft.category || "官方");
+    setIncludeInBudgetChecked(draft.includeInBudget);
+    setProvider(providerNameForDraft(draft));
+    setPlanValue(parseSeatPlan(draft.plan)?.name ?? draft.plan);
+    setPlanCustom(isCustomPlanMode(draft.plan));
+    setSeatsText(String(parseSeatPlan(draft.plan)?.seats ?? 2));
+    setBillingModel(nextConcepts.billingModel);
+    setCurrency(currencyForDraft(draft, isAdd));
     setSubDate(draft.subscribedAt);
     setDueDate(draft.dueDate);
     setFeeError(null);
     setDateErrors({});
-  }, [mode, editIndex, draft]);
-  /* eslint-enable react-hooks/set-state-in-effect */
+  }, [draft, isAdd, modalResetKey]);
+
+  useEffect(() => {
+    const previousDueDate = previousDraftDueDateRef.current;
+    previousDraftDueDateRef.current = draft.dueDate;
+    if (isAdd || previousDueDate === draft.dueDate) return;
+    setDueDate(draft.dueDate);
+    setDateErrors((prev) => ({ ...prev, dueDate: undefined }));
+  }, [draft.dueDate, isAdd]);
 
   const handlePasteImage = async () => {
     try {
@@ -261,14 +360,11 @@ export function SubscriptionFormModal({
         if (fields.matchedSubId && fields.matchedPlan) {
           setPasteText(ocrText);
           setMatchedSub({ id: fields.matchedSubId, plan: fields.matchedPlan });
-          if (fields.category) {
-            setCategory(fields.category);
-          }
           if (fields.fee) {
             const el = formRef.current?.elements.namedItem(
               "fee"
             ) as HTMLInputElement | null;
-            if (el) el.value = fields.fee;
+            if (el) el.value = amountInputValue(fields.fee);
           }
           if (fields.subscribedAt) {
             setSubDate(fields.subscribedAt);
@@ -311,16 +407,20 @@ export function SubscriptionFormModal({
     let filled = 0;
 
     if (fields.plan) {
-      const el = form.elements.namedItem("plan") as HTMLInputElement | null;
-      if (el && !el.value) {
-        el.value = fields.plan;
+      if (!planValue.trim()) {
+        const seatInfo = parseSeatPlan(fields.plan);
+        const baseName = seatInfo?.name ?? fields.plan;
+        setPlanValue(baseName);
+        setProvider(providerNameForDraft({ ...draft, plan: baseName }));
+        setPlanCustom(isCustomPlanMode(baseName));
+        if (seatInfo) setSeatsText(String(seatInfo.seats));
         filled++;
       }
     }
     if (fields.fee) {
       const el = form.elements.namedItem("fee") as HTMLInputElement | null;
       if (el && !el.value) {
-        el.value = fields.fee;
+        el.value = amountInputValue(fields.fee);
         filled++;
       }
     }
@@ -351,11 +451,6 @@ export function SubscriptionFormModal({
         filled++;
       }
     }
-    if (fields.category) {
-      setCategory(fields.category);
-      filled++;
-    }
-
     if (filled > 0) {
       showModalNotice(ft.form.filled(filled));
       setPasteText("");
@@ -398,6 +493,115 @@ export function SubscriptionFormModal({
     }
   };
 
+  const activeProvider = builtInProviderForName(provider);
+  // 当前选中的内置套餐与其年付折扣（用于计费方式下拉提示，自定义/无折扣时为 null）
+  const activePlanPreset =
+    activeProvider?.plans.find((p) => p.name === planValue) ?? null;
+  const annualDiscount = activePlanPreset ? annualSaving(activePlanPreset) : null;
+
+  /** 按周期与人数计算内置套餐总价并填入金额框 */
+  const fillFeeForPreset = (preset: ProviderPlan, cycle: BillingModel, seatCount: number) => {
+    const total = totalPriceForCycle(preset, cycle, seatCount);
+    if (total === null) return;
+    const el = formRef.current?.elements.namedItem("fee") as HTMLInputElement | null;
+    if (el) el.value = String(total);
+    setFeeError(null);
+  };
+
+  const changeBillingModel = (value: BillingModel, presetOverride?: ProviderPlan | null) => {
+    setBillingModel(value);
+    if (!billingModelNeedsDueDate(value)) {
+      setDueDate("");
+      setPickerOpen((open) => (open === "due" ? null : open));
+      setDateErrors((prev) => ({ ...prev, dueDate: undefined }));
+    }
+    // 切换周期时，若当前选中内置套餐则重算金额
+    const preset =
+      presetOverride !== undefined
+        ? presetOverride
+        : activeProvider?.plans.find((p) => p.name === planValue) ?? null;
+    if (preset) fillFeeForPreset(preset, value, seats);
+  };
+
+  const changeProvider = (value: string) => {
+    const nextBuiltIn = builtInProviderForName(value);
+    const prevBuiltIn = builtInProviderForName(provider);
+    setProvider(nextBuiltIn?.label ?? value);
+    if ((nextBuiltIn?.id ?? null) === (prevBuiltIn?.id ?? null)) return;
+    setPlanValue("");
+    setPlanCustom(!nextBuiltIn);
+  };
+
+  /** 选择内置套餐时自动填充金额与计费方式 */
+  const changePlan = (value: string) => {
+    if (value === CUSTOM_PLAN_VALUE) {
+      setPlanCustom(true);
+      setPlanValue("");
+      return;
+    }
+    setPlanValue(value);
+    const preset = activeProvider?.plans.find((p) => p.name === value);
+    if (preset) {
+      setCurrency("USD");
+      const cycle = firstCycleOf(preset);
+      setBillingModel(cycle);
+      if (!billingModelNeedsDueDate(cycle)) {
+        setDueDate("");
+        setPickerOpen((open) => (open === "due" ? null : open));
+        setDateErrors((prev) => ({ ...prev, dueDate: undefined }));
+      }
+      fillFeeForPreset(preset, cycle, seats);
+    }
+  };
+
+  /** 团队版人数变化时重算总价；输入途中（空/非法）暂不重算，失焦时规范化 */
+  const changeSeats = (text: string) => {
+    setSeatsText(text);
+    const parsed = Math.round(Number(text));
+    if (!Number.isFinite(parsed) || parsed < 1) return;
+    const next = Math.min(999, parsed);
+    const preset = activeProvider?.plans.find((p) => p.name === planValue);
+    if (preset) fillFeeForPreset(preset, billingModel, next);
+  };
+
+  const canRenew = Boolean(
+    !isAdd && editRow && editIndex !== null && dueDateRequired && onRenew
+  );
+
+  const handleRenew = async () => {
+    if (!canRenew || !onRenew || editIndex === null || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const renewedState = await onRenew(editIndex);
+      if (renewedState) {
+        const renewedRow = renewedState.rows[editIndex];
+        if (renewedRow && billingModelNeedsDueDate(renewedRow.billingModel)) {
+          setDueDate(renewedRow.dueDate);
+          setDateErrors((prev) => ({ ...prev, dueDate: undefined }));
+        }
+      }
+    } catch (error) {
+      showModalNotice(
+        ft.form.renewFailed(error instanceof Error ? error.message : "未知错误"),
+        true
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const deleteCurrentSubscription = () => {
+    if (!editRow || editIndex === null) return;
+    const result = deleteRow(state, editIndex);
+    if ("error" in result) {
+      showModalNotice(result.error, true);
+      return;
+    }
+    onCommit(result);
+    onNotice(ft.notice.deleted);
+    onClose();
+  };
+
   return (
     <div
       className="modal-overlay"
@@ -426,6 +630,14 @@ export function SubscriptionFormModal({
             ref={formRef}
             id="sub-form"
             className="sub-form"
+            // 单行输入框内按 Enter 会隐式提交整个表单（自动激活 submit 按钮）并关闭弹窗，
+            // 在人数/金额等字段里编辑到一半误按 Enter 就会意外提交，这里拦截掉；
+            // 提交仍走底部「添加/保存」按钮，textarea 的 Enter 换行不受影响
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") {
+                e.preventDefault();
+              }
+            }}
             onSubmit={async (e) => {
               e.preventDefault();
               if (isSubmitting) return;
@@ -463,22 +675,20 @@ export function SubscriptionFormModal({
                 return;
               }
 
-              const category = String(fd.get("category") ?? "").trim();
-              const plan = String(fd.get("plan") ?? "").trim();
-              const fee = String(fd.get("fee") ?? "").trim();
+              const planRaw = String(fd.get("plan") ?? "").trim();
+              const feeInput = String(fd.get("fee") ?? "").trim();
 
-              if (!category) {
-                showModalNotice(ft.form.categoryRequired, true);
-                setIsSubmitting(false);
-                return;
-              }
-              if (!plan) {
+              if (!planRaw) {
                 showModalNotice(ft.form.planRequired, true);
                 setIsSubmitting(false);
                 return;
               }
-              if (fee) {
-                const feeNum = moneyValue(fee);
+              // 团队版套餐名带上人数后缀，例如 "ChatGPT Team（5人）"
+              const planPreset = activeProvider?.plans.find((p) => p.name === planRaw);
+              const plan =
+                planPreset?.perSeat && !planCustom ? `${planRaw}（${seats}人）` : planRaw;
+              if (feeInput) {
+                const feeNum = moneyValue(feeInput);
                 if (feeNum < 0 || isNaN(feeNum)) {
                   showModalNotice(ft.form.feeError, true);
                   setFeeError(ft.form.feeError);
@@ -486,63 +696,96 @@ export function SubscriptionFormModal({
                   return;
                 }
               }
+              // 实付为可选覆盖项：填了就必须是非负数字（允许 0，表示免费）
+              const actualFeeInput = String(fd.get("actualFee") ?? "").trim();
+              if (actualFeeInput) {
+                const actualNum = moneyValue(actualFeeInput);
+                if (isNaN(actualNum) || actualNum < 0) {
+                  showModalNotice(ft.form.feeError, true);
+                  setIsSubmitting(false);
+                  return;
+                }
+              }
+
+              const fee = persistedAmountValue(feeInput, currency);
+              const actualFeeRaw = persistedAmountValue(actualFeeInput, currency);
 
               const patch = {
                 category,
+                provider: provider.trim(),
                 plan,
                 fee,
+                actualFee: actualFeeRaw,
                 subscribedAt: subValidation.normalized ?? "",
-                dueDate: dueValidation.normalized ?? "",
+                dueDate: dueDateRequired ? (dueValidation.normalized ?? "") : "",
                 usage: String(fd.get("usage") ?? "").trim(),
-                subscribed: fd.get("subscribed") === "on",
-                expired: fd.get("expired") === "on",
+                subscribed: isAdd ? true : draft.subscribed,
+                expired: isAdd ? false : draft.expired,
+                includeInBudget: fd.get("includeInBudget") === "on",
+                purchaseChannel,
+                billingModel,
               };
 
               if (matchedSub && isAdd) {
                 const matched = subById(state, matchedSub.id);
                 if (matched) {
-                  const formFee = String(fd.get("fee") ?? "").trim();
-                  const parsedFee = formFee ? moneyValue(formFee) : 0;
-                  const amount =
-                    parsedFee > 0 ? parsedFee : moneyValue(matched.fee);
+                  const persistedCharge = actualFeeRaw || fee || effectiveFee(matched);
                   const note = String(fd.get("usage") ?? "").trim();
-                  const paidAt =
-                    subValidation.normalized || todayLocalISO();
-                  const newBill = normalizeBill({
-                    subscriptionId: matched.id,
-                    amount,
-                    paidAt,
-                    orderId: "",
-                    note,
-                    kind: "payment",
-                  });
-
-                  const needsRestore =
-                    matched.expired || !matched.subscribed;
-                  if (needsRestore) {
-                    const idx = state.rows.findIndex(
-                      (r) => r.id === matchedSub.id
-                    );
-                    const restored = updateRow(state, idx, {
-                      expired: false,
-                      subscribed: true,
+                  const paidAt = subValidation.normalized || todayLocalISO();
+                  const needsRestore = matched.expired || !matched.subscribed;
+                  const needsMatchedUpdate =
+                    needsRestore || matched.includeInBudget !== patch.includeInBudget;
+                  const idx = state.rows.findIndex((r) => r.id === matchedSub.id);
+                  let nextState: AppState = state;
+                  if (needsMatchedUpdate) {
+                    const matchedUpdate = updateRow(state, idx, {
+                      includeInBudget: patch.includeInBudget,
+                      ...(needsRestore ? { expired: false, subscribed: true } : {}),
                     });
-                    if ("error" in restored) {
-                      showModalNotice(ft.form.restoreFailed, true);
+                    if ("error" in matchedUpdate) {
+                      if (needsRestore) showModalNotice(ft.form.restoreFailed, true);
                       setIsSubmitting(false);
                       return;
                     }
-                    onCommit({
-                      ...restored,
-                      bills: [...restored.bills, newBill],
-                    });
-                  } else {
-                    onCommit({ ...state, bills: [...state.bills, newBill] });
+                    nextState = matchedUpdate;
                   }
-                  onClose();
-                  showModalNotice(
-                    ft.form.billAdded(matched.plan, String(amount))
-                  );
+                  if (moneyValue(persistedCharge) > 0) {
+                    let billDraft;
+                    try {
+                      billDraft = await billDraftFromSubscriptionCharge({
+                        subscriptionId: matched.id,
+                        fee: persistedCharge,
+                        paidAt,
+                        note,
+                      });
+                    } catch (error) {
+                      onCommit(nextState);
+                      onClose();
+                      onNotice(
+                        ft.form.billPendingRate(
+                          matched.plan,
+                          error instanceof Error ? error.message : "未知错误"
+                        ),
+                        true
+                      );
+                      setIsSubmitting(false);
+                      return;
+                    }
+                    const billed = addBillWithDetails(nextState, billDraft);
+                    if ("error" in billed) {
+                      showModalNotice(billed.error, true);
+                      setIsSubmitting(false);
+                      return;
+                    }
+                    onCommit(billed);
+                    onClose();
+                    onNotice(ft.form.billAdded(matched.plan, billDraft.amount));
+                  } else if (needsMatchedUpdate) {
+                    onCommit(nextState);
+                    onClose();
+                  } else {
+                    onClose();
+                  }
                   setIsSubmitting(false);
                   return;
                 }
@@ -555,12 +798,47 @@ export function SubscriptionFormModal({
                   setIsSubmitting(false);
                   return;
                 }
-                onCommit(r);
-                onClose();
-                showModalNotice(ft.form.add);
+                const addedRow = r.rows[r.rows.length - 1];
+                const paidAt = addedRow.subscribedAt || todayLocalISO();
+                const charge = effectiveFee(addedRow);
+                if (!(moneyValue(charge) > 0)) {
+                  onCommit(markInitialBillsRecorded(r, [addedRow.id]));
+                  onClose();
+                  onNotice(ft.form.add);
+                  setIsSubmitting(false);
+                  return;
+                }
+                try {
+                  const billDraft = await billDraftFromSubscriptionCharge({
+                    subscriptionId: addedRow.id,
+                    fee: charge,
+                    paidAt,
+                    note: addedRow.usage,
+                  });
+                  const billed = addInitialBillWithDetails(r, billDraft);
+                  if ("error" in billed) {
+                    showModalNotice(billed.error, true);
+                    setIsSubmitting(false);
+                    return;
+                  }
+                  onCommit(billed);
+                  onClose();
+                  onNotice(ft.form.billAdded(addedRow.plan, billDraft.amount));
+                } catch (error) {
+                  // 订阅资料依然保存；下一次启动会安全地重试尚未入账的首笔账单。
+                  onCommit(r);
+                  onClose();
+                  onNotice(
+                    ft.form.billPendingRate(
+                      addedRow.plan,
+                      error instanceof Error ? error.message : "未知错误"
+                    ),
+                    true
+                  );
+                }
                 const idx = r.rows.length - 1;
                 const msg = subscribeNoticeAfterToggle(r, idx);
-                if (msg) showModalNotice(msg);
+                if (msg) onNotice(msg);
               } else if (editIndex !== null) {
                 const result = updateRow(state, editIndex, patch);
                 if ("error" in result) {
@@ -637,58 +915,167 @@ export function SubscriptionFormModal({
             )}
 
             <section className="form-section">
-              <div className="form-section__title">{ft.form.basic}</div>
-              <div className="form-field">
-                <label id="sub-category-label">{ft.form.category}</label>
-                <input type="hidden" name="category" value={category} />
-                <div
-                  className="category-chip-group"
-                  role="radiogroup"
-                  aria-labelledby="sub-category-label"
-                >
-                  {CATEGORY_VALUES.map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      role="radio"
-                      aria-checked={category === value}
-                      className={`category-chip${
-                        category === value ? " is-selected" : ""
-                      }`}
-                      onClick={() => setCategory(value)}
-                    >
-                      {categoryLabel(value, ft.table)}
-                    </button>
-                  ))}
+              <div className="form-row form-row--concepts">
+                <div className="form-field">
+                  <label htmlFor="sub-provider">{ft.form.provider}</label>
+                  <input
+                    id="sub-provider"
+                    name="provider"
+                    className="input"
+                    value={provider}
+                    onChange={(event) => changeProvider(event.target.value)}
+                    list="sub-provider-options"
+                    autoComplete="off"
+                    placeholder={ft.form.providerPlaceholder}
+                  />
+                  <datalist id="sub-provider-options">
+                    {PROVIDERS.map((p) => (
+                      <option key={p.id} value={p.label} />
+                    ))}
+                    <option value={ft.form.other} />
+                  </datalist>
+                </div>
+                <div className="form-field">
+                  <label htmlFor="sub-billing-model">{ft.form.billingModel}</label>
+                  <select
+                    id="sub-billing-model"
+                    name="billingModel"
+                    className="select"
+                    value={billingModel}
+                    onChange={(event) => changeBillingModel(event.target.value as BillingModel)}
+                  >
+                    {BILLING_MODEL_VALUES.map((value) => (
+                      <option key={value} value={value}>
+                        {value === "年付" && annualDiscount
+                          ? ft.form.annualWithSave(annualDiscount.percentOff)
+                          : ft.form.billingModelOptions[value]}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
               <div className="form-field">
-                <label htmlFor="sub-plan">{ft.form.plan}</label>
-                <input
-                  id="sub-plan"
-                  name="plan"
-                  required
-                  defaultValue={draft.plan}
-                  autoComplete="off"
-                  autoFocus={isAdd}
-                  className="input"
-                  placeholder={ft.form.planPlaceholder}
-                />
+                <div className="form-field__label-row">
+                  <label htmlFor="sub-plan">{ft.form.plan}</label>
+                  {activeProvider && planCustom && (
+                    <button
+                      type="button"
+                      className="link-btn"
+                      onClick={() => {
+                        setPlanCustom(false);
+                        setPlanValue("");
+                      }}
+                    >
+                      {ft.form.backToPresets}
+                    </button>
+                  )}
+                </div>
+                {activeProvider && !planCustom ? (
+                  <div className="plan-field-row">
+                    <select
+                      id="sub-plan"
+                      name="plan"
+                      required
+                      className="select"
+                      value={planValue}
+                      onChange={(event) => changePlan(event.target.value)}
+                    >
+                      <option value="" disabled>
+                        {ft.form.selectPlan}
+                      </option>
+                      {activeProvider.plans.map((p) => {
+                        const unit = p.prices["月付"] ?? "";
+                        return (
+                          <option key={p.name} value={p.name}>
+                            {p.perSeat
+                              ? ft.form.planLabelPerSeat(p.name, unit)
+                              : ft.form.planLabel(p.name, unit)}
+                          </option>
+                        );
+                      })}
+                      <option value={CUSTOM_PLAN_VALUE}>{ft.form.customPlan}</option>
+                    </select>
+                    {activeProvider.plans.find((p) => p.name === planValue)?.perSeat && (
+                      <label className="seats-field" htmlFor="sub-seats">
+                        <input
+                          id="sub-seats"
+                          type="number"
+                          min={1}
+                          max={999}
+                          className="input seats-field__input"
+                          value={seatsText}
+                          onChange={(event) => changeSeats(event.target.value)}
+                          onBlur={() => setSeatsText(String(seats))}
+                          aria-label={ft.form.seatsUnit}
+                        />
+                        <span className="seats-field__unit">{ft.form.seatsUnit}</span>
+                      </label>
+                    )}
+                  </div>
+                ) : (
+                  <input
+                    id="sub-plan"
+                    name="plan"
+                    required
+                    value={planValue}
+                    onChange={(event) => setPlanValue(event.target.value)}
+                    autoComplete="off"
+                    className="input"
+                    placeholder={ft.form.planPlaceholder}
+                  />
+                )}
               </div>
 
-              <div className="form-field">
-                <label htmlFor="sub-fee">{ft.form.fee}</label>
-                <input
-                  id="sub-fee"
-                  name="fee"
-                  defaultValue={draft.fee}
-                  autoComplete="off"
-                  onBlur={handleFeeBlur}
-                  placeholder={ft.form.feePlaceholder}
-                  className="input"
-                />
-                {feeError && <span className="field-error">{feeError}</span>}
+              <div className="currency-choice" role="radiogroup" aria-label={ft.form.currency}>
+                <span className="currency-choice__label">{ft.form.currency}</span>
+                <label className="currency-choice__option">
+                  <input
+                    type="radio"
+                    name="currency"
+                    value="CNY"
+                    checked={currency === "CNY"}
+                    onChange={() => setCurrency("CNY")}
+                  />
+                  <span>{ft.form.currencyCny}</span>
+                </label>
+                <label className="currency-choice__option">
+                  <input
+                    type="radio"
+                    name="currency"
+                    value="USD"
+                    checked={currency === "USD"}
+                    onChange={() => setCurrency("USD")}
+                  />
+                  <span>{ft.form.currencyUsd}</span>
+                </label>
+              </div>
+
+              <div className="form-row">
+                <div className="form-field">
+                  <label htmlFor="sub-fee">{ft.form.fee}</label>
+                  <input
+                    id="sub-fee"
+                    name="fee"
+                    defaultValue={amountInputValue(draft.fee)}
+                    autoComplete="off"
+                    onBlur={handleFeeBlur}
+                    placeholder={ft.form.feePlaceholder}
+                    className="input"
+                  />
+                  {feeError && <span className="field-error">{feeError}</span>}
+                </div>
+                <div className="form-field">
+                  <label htmlFor="sub-actual-fee">{ft.form.actualFee}</label>
+                  <input
+                    id="sub-actual-fee"
+                    name="actualFee"
+                    defaultValue={amountInputValue(draft.actualFee)}
+                    autoComplete="off"
+                    placeholder={ft.form.actualFeePlaceholder}
+                    className="input"
+                  />
+                </div>
               </div>
             </section>
 
@@ -711,23 +1098,30 @@ export function SubscriptionFormModal({
                     <span className="field-error">{dateErrors.subscribedAt}</span>
                   )}
                 </div>
-                <div className="form-field form-field--picker">
-                  <label>{ft.form.dueDate}</label>
-                  <input type="hidden" name="dueDate" value={dueDate} />
-                  <CalendarPicker
-                    language={language}
-                    value={dueDate}
-                    onChange={handleDueDateChange}
-                    isOpen={pickerOpen === "due"}
-                    onOpen={() =>
-                      setPickerOpen((prev) => (prev === "due" ? null : "due"))
-                    }
-                    onClose={() => setPickerOpen(null)}
-                  />
-                  {dateErrors.dueDate && (
-                    <span className="field-error">{dateErrors.dueDate}</span>
-                  )}
-                </div>
+                {dueDateRequired ? (
+                  <div className="form-field form-field--picker">
+                    <label>{ft.form.dueDate}</label>
+                    <input type="hidden" name="dueDate" value={dueDate} />
+                    <CalendarPicker
+                      language={language}
+                      value={dueDate}
+                      onChange={handleDueDateChange}
+                      isOpen={pickerOpen === "due"}
+                      onOpen={() =>
+                        setPickerOpen((prev) => (prev === "due" ? null : "due"))
+                      }
+                      onClose={() => setPickerOpen(null)}
+                    />
+                    {dateErrors.dueDate && (
+                      <span className="field-error">{dateErrors.dueDate}</span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="form-field billing-no-renewal">
+                    <span className="billing-no-renewal__label">{ft.form.dueDate}</span>
+                    <span className="billing-no-renewal__value">{ft.form.noRenewalDate}</span>
+                  </div>
+                )}
               </div>
             </section>
 
@@ -748,30 +1142,25 @@ export function SubscriptionFormModal({
                 <label className="form-check">
                   <input
                     type="checkbox"
-                    name="subscribed"
-                    checked={subscribedChecked}
-                    onChange={(e) => setSubscribedChecked(e.target.checked)}
+                    name="includeInBudget"
+                    checked={includeInBudgetChecked}
+                    onChange={(e) => setIncludeInBudgetChecked(e.target.checked)}
                   />
                   <span className="form-check__box" aria-hidden="true" />
                   <span className="form-check__text">
-                    <span className="form-check__title">{ft.form.subscribed}</span>
-                    <span className="form-check__desc">{ft.form.subscribedDesc}</span>
+                    <span className="form-check__title">{ft.form.includeInBudget}</span>
+                    <span className="form-check__desc">{ft.form.includeInBudgetDesc}</span>
                   </span>
                 </label>
-
-                {subscribedChecked && (
-                  <label className="form-check">
-                    <input
-                      type="checkbox"
-                      name="expired"
-                      defaultChecked={draft.expired}
-                    />
-                    <span className="form-check__box" aria-hidden="true" />
-                    <span className="form-check__text">
-                      <span className="form-check__title">{ft.form.expired}</span>
-                      <span className="form-check__desc">{ft.form.expiredDesc}</span>
-                    </span>
-                  </label>
+                {canRenew && (
+                  <button
+                    type="button"
+                    className="btn btn--renew"
+                    onClick={() => void handleRenew()}
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? ft.form.renewing : ft.form.renew}
+                  </button>
                 )}
               </div>
             </section>
@@ -789,17 +1178,17 @@ export function SubscriptionFormModal({
             <button
               type="button"
               className="btn btn--danger"
-              onClick={() => {
-                if (!confirm(ft.form.confirmDelete(editRow.plan))) return;
-                const result = deleteRow(state, editIndex);
-                if ("error" in result) {
-                  showModalNotice(result.error, true);
-                  return;
-                }
-                onCommit(result);
-                onClose();
-                showModalNotice(ft.form.delete);
-              }}
+              onClick={() =>
+                onRequestConfirmation({
+                  title: ft.form.delete,
+                  message: ft.form.confirmDelete(editRow.plan),
+                  confirmLabel: ft.form.confirmDeleteAction,
+                  secondaryLabel: ft.form.cancel,
+                  dismissLabel: ft.common.close,
+                  destructive: true,
+                  onConfirm: deleteCurrentSubscription,
+                })
+              }
             >
               {ft.form.delete}
             </button>

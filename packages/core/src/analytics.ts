@@ -1,7 +1,7 @@
-import { billsForCalendarMonth, monthSpendFromBillsOnly } from "./stats.js";
-import { categoryClass, isActiveSubscription } from "./rules.js";
+import { budgetBillsForCalendarMonth } from "./stats.js";
+import { billingIntervalMonths, categoryClass, effectiveFee, isActiveSubscription } from "./rules.js";
 import { feeToCnyAmount } from "./money.js";
-import type { AppState, Bill } from "./types.js";
+import type { AppState } from "./types.js";
 
 export type CategorySpendRow = {
   category: string;
@@ -25,7 +25,8 @@ export function spendByCategory(
   ref = new Date()
 ): CategorySpendRow[] {
   const mk = monthKey;
-  const monthBills = billsForCalendarMonth(state.bills, mk);
+  const budgetRows = state.rows.filter((row) => row.includeInBudget !== false);
+  const monthBills = budgetBillsForCalendarMonth(state, mk);
   const subById = new Map(state.rows.map((r) => [r.id, r]));
   const agg = new Map<string, { spend: number; ids: Set<string> }>();
 
@@ -40,7 +41,7 @@ export function spendByCategory(
 
   const rows: CategorySpendRow[] = [];
   const categories = new Set<string>();
-  state.rows.forEach((r) => categories.add(r.category?.trim() || "其他"));
+  budgetRows.forEach((r) => categories.add(r.category?.trim() || "其他"));
   monthBills.forEach((b) => {
     const sub = subById.get(b.subscriptionId);
     categories.add(sub?.category?.trim() || "（未关联）");
@@ -48,13 +49,17 @@ export function spendByCategory(
 
   for (const category of categories) {
     const spend = agg.get(category)?.spend ?? 0;
-    const subs = state.rows.filter((r) => (r.category?.trim() || "其他") === category);
+    const subs = budgetRows.filter((r) => (r.category?.trim() || "其他") === category);
     const activeCount = subs.filter((r) => isActiveSubscription(r, ref)).length;
     // 必须用 feeToCnyAmount 而非裸 moneyValue：monthSpend 来自账单（入库时已折算成 ¥），
     // 这两列在统计页并排显示。若这里不折算，美元订阅会让同一行差出一个汇率倍数。
     const feeMonthlyEst = subs
       .filter((r) => isActiveSubscription(r, ref))
-      .reduce((s, r) => s + feeToCnyAmount(r.fee), 0);
+      .reduce(
+        (sum, row) =>
+          sum + feeToCnyAmount(effectiveFee(row)) / billingIntervalMonths(row.billingModel),
+        0
+      );
     rows.push({
       category,
       cls: categoryClass(category),
@@ -73,7 +78,7 @@ export function spendByMonth(state: AppState, lastN = 6, ref = new Date()): Mont
   for (let i = 0; i < lastN; i++) {
     const d = new Date(ref.getFullYear(), ref.getMonth() - i, 1);
     const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const bills = billsForCalendarMonth(state.bills, monthKey);
+    const bills = budgetBillsForCalendarMonth(state, monthKey);
     const total = bills.reduce((s, b) => s + (Number(b.amount) || 0), 0);
     out.push({
       monthKey,
@@ -83,17 +88,4 @@ export function spendByMonth(state: AppState, lastN = 6, ref = new Date()): Mont
     });
   }
   return out;
-}
-
-export function billsForCategory(state: AppState, category: string, monthKey?: string): Bill[] {
-  const subById = new Map(state.rows.map((r) => [r.id, r]));
-  return billsForCalendarMonth(state.bills, monthKey).filter((b) => {
-    const sub = subById.get(b.subscriptionId);
-    const cat = sub?.category?.trim() || "（未关联）";
-    return cat === category;
-  });
-}
-
-export function totalMonthSpend(state: AppState, monthKey?: string): number {
-  return monthSpendFromBillsOnly(state.bills, monthKey);
 }

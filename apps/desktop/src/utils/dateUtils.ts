@@ -2,6 +2,7 @@
  * Unified date utilities shared between CalendarPicker and core dates module
  * Centralizes date formatting, parsing, and conversion to avoid code duplication
  */
+import { formatDate as _formatISO } from "@ai-sub/core";
 
 /**
  * Convert ISO date string (YYYY-MM-DD) to Date object
@@ -13,14 +14,6 @@ export function isoToDate(iso: string): Date {
 }
 
 /**
- * Parse ISO date string with timezone safety
- * Uses T12:00:00 to anchor to local noon
- */
-export function parseISODate(iso: string): Date {
-  return new Date(iso + "T12:00:00");
-}
-
-/**
  * Convert Date object to ISO date string (YYYY-MM-DD)
  */
 export function dateToIso(date: Date): string {
@@ -29,6 +22,7 @@ export function dateToIso(date: Date): string {
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
+
 
 /**
  * Format date for display in Chinese locale
@@ -79,14 +73,6 @@ export function weekdaysForLang(lang: "zh-CN" | "en"): string[] {
  */
 export function formatYearMonth(year: number, month: number): string {
   return `${year}年${month + 1}月`;
-}
-
-/**
- * Get today's date as ISO string
- */
-export function todayISO(): string {
-  const n = new Date();
-  return dateToIso(new Date(n.getFullYear(), n.getMonth(), n.getDate()));
 }
 
 /**
@@ -146,4 +132,3 @@ export function nextMonth(year: number, month: number): [number, number] {
  * Chinese weekdays for calendar display
  */
 export const WEEKDAYS_CN = ["日", "一", "二", "三", "四", "五", "六"];
-

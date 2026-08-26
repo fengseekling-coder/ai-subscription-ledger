@@ -1,38 +1,44 @@
-import { formatDate, nextMonthlyDueDate, normalizeDateInput } from "./dates.js";
-import { feeToCnyAmount, moneyValue } from "./money.js";
+import { formatDate, nextRecurringDueDate, normalizeDateInput } from "./dates.js";
+import { feeToCnyAmount, looksLikeUsdFee, moneyValue } from "./money.js";
 import { normalizeBill, normalizeRow } from "./normalize.js";
-import { isActiveSubscription, needsDueDate } from "./rules.js";
-import { rowFromCatalogId } from "./catalog/from-catalog.js";
-import type { AppState, Bill, SubscriptionRow } from "./types.js";
+import { billingIntervalMonths, effectiveFee, isActiveSubscription, needsDueDate } from "./rules.js";
+import type { AppState, Bill, BillCurrency, SubscriptionRow } from "./types.js";
+
+/** 某笔美元账单在入账当日取得的汇率快照。 */
+export interface UsdCnyRateSnapshot {
+  rate: number;
+  rateDate: string;
+  source?: string;
+}
+
+/** 索引边界校验，通过则返回 rows 副本，否则返回错误。 */
+function guardIndex(state: AppState, index: number): { rows: SubscriptionRow[] } | { error: string } {
+  if (index < 0 || index >= state.rows.length) {
+    return { error: "索引超出范围" };
+  }
+  return { rows: state.rows.slice() };
+}
 
 export function subById(state: AppState, id: string): SubscriptionRow | undefined {
   return state.rows.find((r) => r.id === id);
 }
 
-export function addRowFromCatalog(state: AppState, catalogId: string, subscribed = false): AppState | { error: string } {
-  const row = rowFromCatalogId(catalogId, subscribed);
-  if (!row) return { error: "未找到该服务" };
-  return { ...state, rows: [...state.rows, row] };
-}
-
-export function addRow(state: AppState): AppState {
-  const rows = [
-    ...state.rows,
-    normalizeRow({
-      category: "官方",
-      plan: "新套餐",
-      fee: "",
-      subscribed: false,
-      usage: "",
-      dueDate: "",
-    }),
-  ];
-  return { ...state, rows };
-}
-
 export function addRowWithDetails(
   state: AppState,
-  patch: Pick<SubscriptionRow, "category" | "plan" | "fee" | "usage" | "dueDate" | "subscribedAt"> & {
+  patch: Pick<
+    SubscriptionRow,
+    | "category"
+    | "purchaseChannel"
+    | "provider"
+    | "billingModel"
+    | "plan"
+    | "fee"
+    | "actualFee"
+    | "usage"
+    | "dueDate"
+    | "subscribedAt"
+  > & {
+    includeInBudget?: boolean;
     subscribed: boolean;
     expired: boolean;
   },
@@ -42,8 +48,13 @@ export function addRowWithDetails(
   if (!plan) return { error: "请填写套餐名称" };
   let row = normalizeRow({
     category: patch.category,
+    purchaseChannel: patch.purchaseChannel,
+    provider: patch.provider,
+    billingModel: patch.billingModel,
     plan,
     fee: patch.fee,
+    actualFee: patch.actualFee,
+    includeInBudget: patch.includeInBudget,
     usage: patch.usage,
     dueDate: patch.dueDate,
     subscribedAt: patch.subscribedAt,
@@ -62,13 +73,12 @@ export function updateRowField(
   key: keyof SubscriptionRow,
   value: string
 ): AppState | { error: string } {
-  if (index < 0 || index >= state.rows.length) {
-    return { error: "索引超出范围" };
-  }
+  const g = guardIndex(state, index);
+  if ("error" in g) return g;
   const raw = String(value).trim();
-  const rows = state.rows.slice();
+  const rows = g.rows;
   let row: SubscriptionRow;
-  if (key === "subscribed" || key === "expired") {
+  if (key === "subscribed" || key === "expired" || key === "includeInBudget") {
     // 布尔字段需转回 boolean，避免 UI 的 string 值把字段污染成字符串
     row = { ...rows[index], [key]: raw === "true" || raw === "1" } as SubscriptionRow;
   } else if (key === "category" || key === "plan" || key === "fee") {
@@ -82,19 +92,17 @@ export function updateRowField(
 }
 
 export function updateRow(state: AppState, index: number, patch: Partial<SubscriptionRow>): AppState | { error: string } {
-  if (index < 0 || index >= state.rows.length) {
-    return { error: "索引超出范围" };
-  }
-  const rows = state.rows.slice();
+  const g = guardIndex(state, index);
+  if ("error" in g) return g;
+  const rows = g.rows;
   rows[index] = normalizeRow({ ...rows[index], ...patch });
   return { ...state, rows };
 }
 
 export function toggleSubscribe(state: AppState, index: number, ref = new Date()): AppState | { error: string } {
-  if (index < 0 || index >= state.rows.length) {
-    return { error: "索引超出范围" };
-  }
-  const rows = state.rows.slice();
+  const g = guardIndex(state, index);
+  if ("error" in g) return g;
+  const rows = g.rows;
   const row = { ...rows[index] };
   row.subscribed = !row.subscribed;
   if (!row.subscribed) {
@@ -123,9 +131,8 @@ export function pickDueDate(
   rawInput: string | null,
   ref = new Date()
 ): { state: AppState } | { error: string } {
-  if (index < 0 || index >= state.rows.length) {
-    return { error: "索引超出范围" };
-  }
+  const g = guardIndex(state, index);
+  if ("error" in g) return g;
   if (rawInput === null) return { state };
   const iso = normalizeDateInput(rawInput, ref);
   if (iso === null) return { error: "日期格式请使用 YYYY-MM-DD" };
@@ -135,28 +142,25 @@ export function pickDueDate(
 }
 
 export function markExpired(state: AppState, index: number): AppState | { error: string } {
-  if (index < 0 || index >= state.rows.length) {
-    return { error: "索引超出范围" };
-  }
-  const rows = state.rows.slice();
+  const g = guardIndex(state, index);
+  if ("error" in g) return g;
+  const rows = g.rows;
   if (!rows[index].subscribed) return state;
   rows[index] = { ...rows[index], expired: true };
   return { ...state, rows };
 }
 
 export function clearExpired(state: AppState, index: number): AppState | { error: string } {
-  if (index < 0 || index >= state.rows.length) {
-    return { error: "索引超出范围" };
-  }
-  const rows = state.rows.slice();
+  const g = guardIndex(state, index);
+  if ("error" in g) return g;
+  const rows = g.rows;
   rows[index] = { ...rows[index], expired: false };
   return { ...state, rows };
 }
 
 export function deleteRow(state: AppState, index: number): AppState | { error: string } {
-  if (index < 0 || index >= state.rows.length) {
-    return { error: "索引超出范围" };
-  }
+  const g = guardIndex(state, index);
+  if ("error" in g) return g;
   const row = state.rows[index];
   const rows = state.rows.filter((_, i) => i !== index);
   const bills = state.bills.filter((b) => b.subscriptionId !== row.id);
@@ -170,20 +174,27 @@ export function markUnrenewed(state: AppState, index: number, choice: "delete" |
   return result;
 }
 
-export function renewRow(state: AppState, index: number, ref = new Date()): AppState | { error: string } {
-  if (index < 0 || index >= state.rows.length) {
-    return { error: "索引超出范围" };
-  }
-  const rows = state.rows.slice();
+export function renewRow(
+  state: AppState,
+  index: number,
+  ref = new Date(),
+  usdCnyRate?: UsdCnyRateSnapshot
+): AppState | { error: string } {
+  const g = guardIndex(state, index);
+  if ("error" in g) return g;
+  const rows = g.rows;
   const prevDue = rows[index].dueDate;
+  const intervalMonths = billingIntervalMonths(rows[index].billingModel);
   rows[index] = normalizeRow({
     ...rows[index],
-    dueDate: nextMonthlyDueDate(rows[index].dueDate, ref),
+    dueDate: nextRecurringDueDate(rows[index].dueDate, intervalMonths, ref),
     subscribed: true,
     expired: false,
   });
   const bills = [...state.bills];
-  const amt = feeToCnyAmount(rows[index].fee);
+  const charge = effectiveFee(rows[index]);
+  const isUsd = looksLikeUsdFee(charge);
+  const amt = feeToCnyAmount(charge, usdCnyRate?.rate);
   if (amt > 0) {
     // 去重键与 paidAt 都必须来自同一个 ref。之前 dueDate 用 ref、这里用真实时钟，
     // 传入 ref 时「每月只记一笔续费」会对着错误的月份判重。
@@ -203,6 +214,15 @@ export function renewRow(state: AppState, index: number, ref = new Date()): AppS
           orderId: "",
           note: prevDue ? `续费（原到期 ${prevDue}）· 预付下期` : "续费",
           kind: "renewal",
+          ...(isUsd
+            ? {
+                originalAmount: moneyValue(charge),
+                originalCurrency: "USD" as BillCurrency,
+                exchangeRate: usdCnyRate?.rate,
+                exchangeRateDate: usdCnyRate?.rateDate,
+                exchangeRateSource: usdCnyRate?.source,
+              }
+            : { originalAmount: moneyValue(charge), originalCurrency: "CNY" as BillCurrency }),
         })
       );
     }
@@ -217,6 +237,11 @@ export interface BillDraft {
   paidAt: string;
   orderId: string;
   note: string;
+  originalAmount?: number;
+  originalCurrency?: BillCurrency;
+  exchangeRate?: number;
+  exchangeRateDate?: string;
+  exchangeRateSource?: string;
 }
 
 /**
@@ -227,7 +252,7 @@ export function billDraftFor(state: AppState, ref = new Date()): BillDraft | { e
   const active = state.rows.filter((r) => isActiveSubscription(r, ref));
   const pick = active[0] || state.rows[0];
   if (!pick) return { error: "请先添加订阅，再记账单。" };
-  const amount = feeToCnyAmount(pick.fee);
+  const amount = feeToCnyAmount(effectiveFee(pick));
   return {
     subscriptionId: pick.id,
     amount: amount > 0 ? String(amount) : "",
@@ -242,7 +267,7 @@ function validateBillDraft(
   state: AppState,
   draft: BillDraft,
   ref: Date
-): { subscriptionId: string; amount: number; paidAt: string; orderId: string; note: string } | { error: string } {
+): Omit<Bill, "id" | "kind"> | { error: string } {
   const subscriptionId = draft.subscriptionId.trim();
   if (!subscriptionId || !subById(state, subscriptionId)) {
     return { error: "请选择关联订阅" };
@@ -251,12 +276,28 @@ function validateBillDraft(
   if (!(amount > 0)) return { error: "请填写有效金额" };
   const paidAt = normalizeDateInput(draft.paidAt, ref);
   if (paidAt === null) return { error: "日期格式请使用 YYYY-MM-DD" };
+  const originalCurrency =
+    draft.originalCurrency === "USD" || draft.originalCurrency === "CNY"
+      ? draft.originalCurrency
+      : undefined;
+  const originalAmount = Number(draft.originalAmount);
+  const exchangeRate = Number(draft.exchangeRate);
   return {
     subscriptionId,
     amount,
     paidAt: paidAt || formatDate(ref),
     orderId: draft.orderId,
     note: draft.note,
+    ...(originalCurrency && Number.isFinite(originalAmount) && originalAmount >= 0
+      ? { originalCurrency, originalAmount }
+      : {}),
+    ...(originalCurrency === "USD" && Number.isFinite(exchangeRate) && exchangeRate > 0
+      ? {
+          exchangeRate,
+          exchangeRateDate: String(draft.exchangeRateDate || "").slice(0, 10),
+          exchangeRateSource: String(draft.exchangeRateSource || "").trim(),
+        }
+      : {}),
   };
 }
 
@@ -270,6 +311,38 @@ export function addBillWithDetails(
   return {
     ...state,
     bills: [...state.bills, normalizeBill({ ...fields, kind: "payment" })],
+  };
+}
+
+/**
+ * 添加订阅的首笔付款，并写下防重标记。
+ *
+ * 该标记即使账单后来被用户删掉也会保留，避免应用重启后又自动补回已删除的账单。
+ */
+export function addInitialBillWithDetails(
+  state: AppState,
+  draft: BillDraft,
+  ref = new Date()
+): AppState | { error: string } {
+  const billed = addBillWithDetails(state, draft, ref);
+  if ("error" in billed) return billed;
+  return {
+    ...billed,
+    rows: billed.rows.map((row) =>
+      row.id === draft.subscriptionId ? { ...row, initialBillRecorded: true } : row
+    ),
+  };
+}
+
+/** 为没有首笔账单的旧订阅写下处理标记，不创建或删除账单。 */
+export function markInitialBillsRecorded(state: AppState, subscriptionIds: string[]): AppState {
+  if (subscriptionIds.length === 0) return state;
+  const ids = new Set(subscriptionIds);
+  return {
+    ...state,
+    rows: state.rows.map((row) =>
+      ids.has(row.id) && !row.initialBillRecorded ? { ...row, initialBillRecorded: true } : row
+    ),
   };
 }
 
@@ -298,6 +371,11 @@ export function billToDraft(bill: Bill): BillDraft {
     paidAt: bill.paidAt,
     orderId: bill.orderId,
     note: bill.note,
+    originalAmount: bill.originalAmount,
+    originalCurrency: bill.originalCurrency,
+    exchangeRate: bill.exchangeRate,
+    exchangeRateDate: bill.exchangeRateDate,
+    exchangeRateSource: bill.exchangeRateSource,
   };
 }
 

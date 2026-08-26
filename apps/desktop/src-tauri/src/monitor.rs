@@ -320,8 +320,6 @@ pub struct SupportedService {
     pub id: &'static str,
     pub label: &'static str,
     pub desc: &'static str,
-    /// 关联的服务库条目 id（前端用于自动关联订阅）
-    pub catalog_ids: Vec<&'static str>,
 }
 
 /// 支持的监控服务列表
@@ -331,19 +329,45 @@ pub fn supported_services() -> Vec<SupportedService> {
             id: "openai",
             label: "OpenAI",
             desc: "支持 ChatGPT Plus/Team 及 API 用量查询",
-            catalog_ids: vec!["chatgpt-plus", "chatgpt-team", "openai-api-usage"],
         },
         SupportedService {
             id: "anthropic",
             label: "Anthropic (Claude)",
             desc: "验证 Claude API Key 有效性",
-            catalog_ids: vec!["claude-pro", "claude-api"],
         },
         SupportedService {
             id: "cursor",
             label: "Cursor",
             desc: "检查 Cursor Pro 订阅状态",
-            catalog_ids: vec!["cursor-billing"],
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{supported_services, MonitorInput};
+
+    #[test]
+    fn supported_services_do_not_expose_catalog_links() {
+        let services = serde_json::to_value(supported_services()).unwrap();
+        let first = services.as_array().unwrap().first().unwrap();
+
+        assert!(first.get("catalogIds").is_none());
+        assert_eq!(first.get("id").and_then(|v| v.as_str()), Some("openai"));
+    }
+
+    #[test]
+    fn legacy_monitor_input_ignores_catalog_id() {
+        let input: MonitorInput = serde_json::from_value(serde_json::json!({
+            "id": "monitor-1",
+            "catalogId": "chatgpt-plus",
+            "serviceId": "openai",
+            "apiKey": "secret"
+        }))
+        .unwrap();
+
+        assert_eq!(input.id, "monitor-1");
+        assert_eq!(input.service_id, "openai");
+        assert_eq!(input.api_key, "secret");
+    }
 }

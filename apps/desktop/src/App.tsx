@@ -1,10 +1,14 @@
 import {
+  addInitialBillWithDetails,
   billDraftFor,
   billToDraft,
   billsForCalendarMonth,
   computeSummary,
+  effectiveFee,
   expiredRowEntries,
   fmtMoney,
+  markInitialBillsRecorded,
+  moneyValue,
   pendingRenewItems,
   pickDueDate,
   sortedBills,
@@ -15,7 +19,6 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BillFormModal } from "./BillFormModal";
 import { BillsView } from "./BillsView";
-import { CatalogModal } from "./CatalogModal";
 import { Dashboard } from "./Dashboard";
 import { DueDatePickerModal } from "./DueDatePickerModal";
 import { MonitorModal } from "./MonitorModal";
@@ -27,6 +30,7 @@ import { StatsView } from "./StatsView";
 import { SubTable } from "./SubTable";
 import { buildSubTableHandlers } from "./subTableHandlers";
 import { SubscriptionFormModal, type SubscriptionFormDraft } from "./SubscriptionFormModal";
+import { billDraftFromSubscriptionCharge } from "./exchangeRate";
 import { loadAppState } from "./storage";
 import { useDebouncedPersistence } from "./useDebouncedPersistence";
 import { useRenewReminders } from "./useRenewReminders";
@@ -34,13 +38,19 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Icon } from "./ui/Icon";
+import { ConfirmDialog, type ConfirmationRequest } from "./ui/ConfirmDialog";
 
 type AppMode = "subs" | "expired" | "bills" | "pending" | "stats";
 
 const NEW_SUBSCRIPTION_DRAFT: SubscriptionFormDraft = {
-  category: "官方",
+  category: "AI 服务",
+  purchaseChannel: "官方",
+  provider: "",
+  billingModel: "月付",
   plan: "",
   fee: "",
+  actualFee: "",
+  includeInBudget: true,
   subscribedAt: "",
   dueDate: "",
   usage: "",
@@ -147,13 +157,14 @@ export default function App() {
   const [mode, setMode] = useState<AppMode>("subs");
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
-  const [showCatalog, setShowCatalog] = useState(false);
   const [duePickIndex, setDuePickIndex] = useState<number | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showMonitor, setShowMonitor] = useState(false);
+  const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const [notifyOn, setNotifyOn] = useState(localStorage.getItem("ai-sub-notify") === "on");
   // 账单表单：新增时 billId 为 null，编辑时带上要改的账单 id
   const [billForm, setBillForm] = useState<{ billId: string | null; draft: BillDraft } | null>(null);
+  const initialBillMigrationAttempted = useRef(false);
   
   // Hooks
   const { notice, showNotice } = useNotice();
@@ -176,7 +187,7 @@ export default function App() {
     () => (state ? expiredRowEntries(state) : []),
     [state]
   );
-  
+
   const isEmptyLedger = useMemo(
     () => Boolean(state && state.rows.length === 0 && state.bills.length === 0),
     [state]
@@ -237,6 +248,57 @@ export default function App() {
   const commit = useCallback((next: AppState) => {
     setState(next);
   }, []);
+  const requestConfirmation = useCallback((request: ConfirmationRequest) => {
+    setConfirmation(request);
+  }, []);
+
+  // 旧版本只有“是否计入预算”标记，并不会创建首笔账单。只在载入后补一次：
+  // - 已有关联账单的记录只补处理标记；
+  // - 无账单的记录按订阅日期补一笔；
+  // - 用户后来删除账单时，initialBillRecorded 会阻止它在下次启动时再次出现。
+  useEffect(() => {
+    if (!state || initialBillMigrationAttempted.current) return;
+    initialBillMigrationAttempted.current = true;
+    let cancelled = false;
+
+    const migrate = async () => {
+      let next = state;
+      const markOnly: string[] = [];
+
+      for (const row of state.rows) {
+        if (!row.subscribed || row.initialBillRecorded) continue;
+        if (next.bills.some((bill) => bill.subscriptionId === row.id)) {
+          markOnly.push(row.id);
+          continue;
+        }
+        const charge = effectiveFee(row);
+        if (!row.subscribedAt || !(moneyValue(charge) > 0)) {
+          if (row.subscribedAt) markOnly.push(row.id);
+          continue;
+        }
+        try {
+          const draft = await billDraftFromSubscriptionCharge({
+            subscriptionId: row.id,
+            fee: charge,
+            paidAt: row.subscribedAt,
+            note: row.usage,
+          });
+          const billed = addInitialBillWithDetails(next, draft);
+          if (!("error" in billed)) next = billed;
+        } catch {
+          // 离线或汇率服务暂不可用时不写入旧的固定汇率；保留未处理标记以便下次启动重试。
+        }
+      }
+
+      next = markInitialBillsRecorded(next, markOnly);
+      if (!cancelled && next !== state) commit(next);
+    };
+
+    void migrate();
+    return () => {
+      cancelled = true;
+    };
+  }, [state, commit]);
 
   const changeLanguage = useCallback((next: LangPref) => {
     setState((prev) => (prev ? { ...prev, language: next } : prev));
@@ -261,19 +323,32 @@ export default function App() {
   const subHandlers = useMemo(
     () =>
       state
-        ? buildSubTableHandlers(state, commit, showNotice, setEditIndex, setDuePickIndex)
+        ? buildSubTableHandlers(
+            state,
+            commit,
+            showNotice,
+            setEditIndex,
+            setDuePickIndex,
+            requestConfirmation
+          )
         : null,
-    [state, commit, showNotice]
+    [state, commit, showNotice, requestConfirmation]
   );
 
   const expiredSubHandlers = useMemo(
     () =>
       state
-        ? buildSubTableHandlers(state, commit, showNotice, setEditIndex, setDuePickIndex, {
-            renewNotice: false,
-          })
+        ? buildSubTableHandlers(
+            state,
+            commit,
+            showNotice,
+            setEditIndex,
+            setDuePickIndex,
+            requestConfirmation,
+            { renewNotice: false }
+          )
         : null,
-    [state, commit, showNotice]
+    [state, commit, showNotice, requestConfirmation]
   );
 
   const closeSubModal = useCallback(() => {
@@ -337,8 +412,13 @@ export default function App() {
       : subModalMode === "edit" && editRow
         ? {
             category: editRow.category,
+            purchaseChannel: editRow.purchaseChannel,
+            provider: editRow.provider ?? "",
+            billingModel: editRow.billingModel,
             plan: editRow.plan,
             fee: editRow.fee,
+            actualFee: editRow.actualFee ?? "",
+            includeInBudget: editRow.includeInBudget,
             subscribedAt: editRow.subscribedAt,
             dueDate: editRow.dueDate,
             usage: editRow.usage,
@@ -403,9 +483,6 @@ export default function App() {
             <div className="toolbar__group">
               <button type="button" className="primary" onClick={handlePrimary}>
                 {mode === "bills" ? tr.toolbar.addBill : tr.toolbar.add}
-              </button>
-              <button type="button" onClick={() => setShowCatalog(true)}>
-                {tr.toolbar.catalog}
               </button>
             </div>
             <div className="toolbar__group">
@@ -475,9 +552,6 @@ export default function App() {
               <button type="button" className="primary" onClick={openAddSubscription}>
                 {tr.empty.add}
               </button>
-              <button type="button" onClick={() => setShowCatalog(true)}>
-                {tr.empty.fromCatalog}
-              </button>
             </div>
           </div>
         )}
@@ -503,17 +577,13 @@ export default function App() {
 
         {mode === "subs" && subHandlers && (
           <section className="section">
-            <div className="table-card">
-              <SubTable entries={subsEntries} language={state.language} {...subHandlers} />
-            </div>
+            <SubTable entries={subsEntries} language={state.language} {...subHandlers} />
           </section>
         )}
 
         {mode === "expired" && expiredSubHandlers && (
           <section className="section">
-            <div className="table-card">
-              <SubTable entries={expiredEntries} language={state.language} {...expiredSubHandlers} />
-            </div>
+            <SubTable entries={expiredEntries} language={state.language} {...expiredSubHandlers} />
           </section>
         )}
 
@@ -525,6 +595,7 @@ export default function App() {
             onNotice={showNotice}
             onEdit={openEditBill}
             language={state.language}
+            onRequestConfirmation={requestConfirmation}
           />
         )}
 
@@ -534,11 +605,12 @@ export default function App() {
             pending={pending}
             onCommit={commit}
             showNotice={showNotice}
+            onRequestConfirmation={requestConfirmation}
           />
         )}
       </main>
 
-        {state && subModalMode && subFormDraft && (
+      {state && subModalMode && subFormDraft && (
         <SubscriptionFormModal
           mode={subModalMode}
           draft={subFormDraft}
@@ -549,6 +621,8 @@ export default function App() {
           onClose={closeSubModal}
           onCommit={commit}
           onNotice={showNotice}
+          onRenew={subHandlers?.onRenew}
+          onRequestConfirmation={requestConfirmation}
         />
       )}
 
@@ -577,17 +651,6 @@ export default function App() {
         />
       )}
 
-      {showCatalog && state && (
-        <CatalogModal
-          state={state}
-          onClose={() => setShowCatalog(false)}
-          onCommit={(next) => {
-            commit(next);
-            showNotice(tr.app.addedFromCatalog);
-          }}
-        />
-      )}
-
       {showSettings && (
         <SettingsModal
           language={state?.language}
@@ -604,8 +667,12 @@ export default function App() {
         <MonitorModal
           state={state}
           onCommit={commit}
+          onRequestConfirmation={requestConfirmation}
           onClose={() => setShowMonitor(false)}
         />
+      )}
+      {confirmation && (
+        <ConfirmDialog {...confirmation} onDismiss={() => setConfirmation(null)} />
       )}
     </div>
   );
