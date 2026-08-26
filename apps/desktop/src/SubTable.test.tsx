@@ -47,44 +47,105 @@ function iso(offsetDays: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-describe("SubTable 表头与分类", () => {
-  it("中文模式下用中文表头", () => {
-    const s = ledger([{}]);
+describe("SubTable 表头与账单分类", () => {
+  it("中文模式下显示账单分类表头与预算/普通账单", () => {
+    const s = ledger([{ includeInBudget: true }, { includeInBudget: false }]);
     render(<SubTable entries={visibleRowEntries(s, REF_DATE)} language="zh-CN" {...handlers()} />);
-    expect(screen.getByText("分类")).toBeInTheDocument();
-    expect(screen.getByText("套餐")).toBeInTheDocument();
-    expect(screen.getByText("剩余")).toBeInTheDocument();
+    expect(screen.getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
+      "账单分类",
+      "套餐",
+      "金额",
+      "备注",
+      "状态",
+      "到期时间",
+      "操作",
+    ]);
+    expect(screen.getAllByRole("columnheader")).toHaveLength(7);
+    expect(screen.getByText("预算账单")).toBeInTheDocument();
+    expect(screen.getByText("普通账单")).toBeInTheDocument();
   });
 
-  it("英文模式下表头与用途分类都翻译", () => {
+  it("英文模式下显示自然的账单类型文案，且旧数据非 false 归入预算账单", () => {
     const s = ledger([
-      { category: "AI 服务" },
-      { category: "开发工具" },
-      { category: "云服务 / VPS" },
-      { category: "域名 / 网络" },
-      { category: "设计创作" },
-      { category: "办公协作" },
-      { category: "影音娱乐" },
-      { category: "其他" },
+      { category: "AI 服务", includeInBudget: true },
+      { category: "开发工具", includeInBudget: false },
+      { category: "自定义分类" },
     ]);
     render(<SubTable entries={visibleRowEntries(s, REF_DATE)} language="en" {...handlers()} />);
-    expect(screen.getByText("Category")).toBeInTheDocument();
-    expect(screen.getByText("Status")).toBeInTheDocument();
-    expect(screen.getByText("AI services")).toBeInTheDocument();
-    expect(screen.getByText("Developer tools")).toBeInTheDocument();
-    expect(screen.getByText("Cloud / VPS")).toBeInTheDocument();
-    expect(screen.getByText("Domains / network")).toBeInTheDocument();
-    expect(screen.getByText("Design & creation")).toBeInTheDocument();
-    expect(screen.getByText("Productivity")).toBeInTheDocument();
-    expect(screen.getByText("Media")).toBeInTheDocument();
-    expect(screen.getByText("Other")).toBeInTheDocument();
+    expect(screen.getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
+      "Bill type",
+      "Plan",
+      "Fee",
+      "Note",
+      "Status",
+      "Expires",
+      "Actions",
+    ]);
+    expect(screen.getAllByRole("columnheader")).toHaveLength(7);
+    expect(screen.getAllByText("Budget bill")).toHaveLength(2);
+    expect(screen.getByText("Regular bill")).toBeInTheDocument();
+    expect(screen.queryByText("AI services")).not.toBeInTheDocument();
+    expect(screen.queryByText("Developer tools")).not.toBeInTheDocument();
+    expect(screen.queryByText("自定义分类")).not.toBeInTheDocument();
+  });
+});
+
+describe("SubTable 订阅详情与状态", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(REF_DATE);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
-  /** category 是用户数据：自定义分类必须原样显示，不能被翻译或改写。 */
-  it("自定义分类在英文模式下原样透出", () => {
-    const s = ledger([{ category: "我自己的分类" }]);
+  it("长备注完整保留在自己的备注单元格中", () => {
+    const longNote = "Account note with renewal details and support contact";
+    const s = ledger([{ usage: longNote }]);
     render(<SubTable entries={visibleRowEntries(s, REF_DATE)} language="en" {...handlers()} />);
-    expect(screen.getByText("我自己的分类")).toBeInTheDocument();
+
+    const noteCell = screen.getByText(longNote);
+    expect(noteCell).toBeInTheDocument();
+    expect(noteCell).toHaveClass("subscription-list__note");
+    expect(noteCell.closest("td")?.cellIndex).toBe(3);
+  });
+
+  it("不显示订阅日期，到期日期位于状态列之后", () => {
+    const dueDate = iso(2);
+    const s = ledger([{ fee: "49", subscribedAt: "2026-01-01", dueDate }]);
+    render(<SubTable entries={visibleRowEntries(s, REF_DATE)} language="en" {...handlers()} />);
+
+    const dueCell = screen.getByText(dueDate).closest("td");
+    expect(dueCell).not.toBeNull();
+    expect(dueCell).toHaveClass("subscription-list__date-cell");
+    expect(dueCell?.cellIndex).toBe(5);
+    expect(screen.queryByText("2026-01-01")).not.toBeInTheDocument();
+
+    const status = screen.getByText("2 days left");
+    const statusCell = status.closest("td");
+    expect(statusCell).not.toBeNull();
+    expect(statusCell).toHaveClass("subscription-list__status");
+    expect(statusCell?.cellIndex).toBe(4);
+    expect(statusCell).not.toContainElement(screen.getByText(dueDate));
+  });
+
+  it("每行都有始终可见且按原始索引映射的编辑按钮", async () => {
+    vi.useRealTimers();
+    const s = ledger([
+      { plan: "A", dueDate: iso(30) },
+      { plan: "B", dueDate: iso(2) },
+      { plan: "C", dueDate: iso(1) },
+    ]);
+    const entries = visibleRowEntries(s, REF_DATE);
+    const h = handlers();
+    render(<SubTable entries={entries} language="zh-CN" {...h} />);
+
+    const editButtons = screen.getAllByRole("button", { name: "编辑" });
+    expect(editButtons).toHaveLength(entries.length);
+    for (const button of editButtons) await userEvent.click(button);
+    entries.forEach(({ index }, callIndex) => {
+      expect(h.onEdit).toHaveBeenNthCalledWith(callIndex + 1, index);
+    });
   });
 });
 

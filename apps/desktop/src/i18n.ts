@@ -96,6 +96,11 @@ export type Dict = {
     feePlaceholder: string;
     actualFee: string;
     actualFeePlaceholder: string;
+    includeInBudget: string;
+    includeInBudgetDesc: string;
+    renew: string;
+    renewing: string;
+    renewFailed: (reason: string) => string;
     dates: string;
     subDate: string;
     dueDate: string;
@@ -103,10 +108,6 @@ export type Dict = {
     other: string;
     note: string;
     notePlaceholder: string;
-    subscribed: string;
-    subscribedDesc: string;
-    expired: string;
-    expiredDesc: string;
     delete: string;
     confirmDeleteAction: string;
     cancel: string;
@@ -127,13 +128,17 @@ export type Dict = {
     noFillable: string;
     restoreFailed: string;
     billAdded: (plan: string, amount: string) => string;
+    billPendingRate: (plan: string, reason: string) => string;
     confirmDelete: (plan: string) => string;
   };
   table: {
-    category: string;
+    billType: string;
+    budgetBill: string;
+    regularBill: string;
     plan: string;
     fee: string;
     note: string;
+    dueDate: string;
     remain: string;
     subscribe: string;
     edit: string;
@@ -154,6 +159,7 @@ export type Dict = {
     unsubscribe: string;
     confirmDeleteRow: (plan: string) => string;
     renewedNotice: (plan: string, due: string) => string;
+    renewRateFailed: (reason: string) => string;
     deletedNotice: (plan: string) => string;
     unsubscribedNotice: (plan: string) => string;
   };
@@ -263,6 +269,7 @@ export type Dict = {
     save: string;
     added: string;
     saved: string;
+    fxDetail: (usd: number, rate: number, date: string) => string;
   };
 };
 
@@ -361,6 +368,11 @@ const zh: Dict = {
     feePlaceholder: "例如 20 或 29.9",
     actualFee: "实付",
     actualFeePlaceholder: "默认同金额",
+    includeInBudget: "计入预算",
+    includeInBudgetDesc: "关联账单会计入本月预算；关闭后账单仍保留在账单列表。",
+    renew: "续费",
+    renewing: "续费中…",
+    renewFailed: (reason) => `续费失败：${reason}`,
     dates: "日期",
     subDate: "订阅日期",
     dueDate: "续费日期",
@@ -368,10 +380,6 @@ const zh: Dict = {
     other: "其他",
     note: "备注",
     notePlaceholder: "可选：订单号、账号备注等",
-    subscribed: "已订阅",
-    subscribedDesc: "计入概览与月费统计",
-    expired: "标记为已过期",
-    expiredDesc: "不再计入月费",
     delete: "删除",
     confirmDeleteAction: "确认删除",
     cancel: "取消",
@@ -392,14 +400,18 @@ const zh: Dict = {
     noFillable: "未识别到可填充的字段",
     restoreFailed: "恢复订阅失败",
     billAdded: (plan, amount) => `已为「${plan}」添加账单 ${amount} 元`,
+    billPendingRate: (plan, reason) => `已保存「${plan}」，但未能按付款日查询美元汇率，因此暂未自动入账：${reason}`,
     confirmDelete: (plan) => `确定删除「${plan}」及其关联账单？`,
   },
   table: {
-    category: "分类",
+    billType: "账单分类",
+    budgetBill: "预算账单",
+    regularBill: "普通账单",
     plan: "套餐",
     fee: "金额",
     note: "备注",
-    remain: "剩余",
+    dueDate: "到期时间",
+    remain: "状态",
     subscribe: "订阅",
     edit: "编辑",
     nonCycle: "非周期",
@@ -420,6 +432,7 @@ const zh: Dict = {
     unsubscribe: "改为未订阅",
     confirmDeleteRow: (plan) => `确定删除「${plan}」及其关联账单？`,
     renewedNotice: (plan, due) => `${plan} 已续费，续费日 → ${due}`,
+    renewRateFailed: (reason) => `未能按付款日获取美元汇率，续费未入账：${reason}`,
     deletedNotice: (plan) => `${plan} 已删除。`,
     unsubscribedNotice: (plan) => `${plan} 已改为未订阅。`,
   },
@@ -529,8 +542,9 @@ const zh: Dict = {
     save: "保存",
     added: "已添加账单",
     saved: "账单已保存",
+    fxDetail: (usd, rate, date) => `US$${usd} × ${rate} · ${date} 汇率`,
   },
-};
+  };
 
 const en: Dict = {
   brand: "Subscription Ledger",
@@ -627,6 +641,11 @@ const en: Dict = {
     feePlaceholder: "e.g. 20 or 29.9",
     actualFee: "Actual paid",
     actualFeePlaceholder: "Defaults to amount",
+    includeInBudget: "Include in budget",
+    includeInBudgetDesc: "Linked bills count toward this month's budget. Turn it off to keep bills without counting them.",
+    renew: "Renew",
+    renewing: "Renewing…",
+    renewFailed: (reason) => `Renewal failed: ${reason}`,
     dates: "Dates",
     subDate: "Subscribed on",
     dueDate: "Next renewal",
@@ -634,10 +653,6 @@ const en: Dict = {
     other: "Other",
     note: "Note",
     notePlaceholder: "Optional: order id, account note…",
-    subscribed: "Subscribed",
-    subscribedDesc: "Count in overview and monthly total",
-    expired: "Mark expired",
-    expiredDesc: "Excluded from monthly total",
     delete: "Delete",
     confirmDeleteAction: "Confirm delete",
     cancel: "Cancel",
@@ -658,13 +673,17 @@ const en: Dict = {
     noFillable: "Nothing recognized to fill in",
     restoreFailed: "Could not restore the subscription",
     billAdded: (plan, amount) => `Added a ¥${amount} bill for ${plan}`,
+    billPendingRate: (plan, reason) => `Saved ${plan}, but could not look up its USD exchange rate for the payment date, so it was not auto-recorded: ${reason}`,
     confirmDelete: (plan) => `Delete ${plan} and its linked bills?`,
   },
   table: {
-    category: "Category",
+    billType: "Bill type",
+    budgetBill: "Budget bill",
+    regularBill: "Regular bill",
     plan: "Plan",
     fee: "Fee",
     note: "Note",
+    dueDate: "Expires",
     remain: "Status",
     subscribe: "Subscribe",
     edit: "Edit",
@@ -686,6 +705,7 @@ const en: Dict = {
     unsubscribe: "Mark unsubscribed",
     confirmDeleteRow: (plan) => `Delete ${plan} and its linked bills?`,
     renewedNotice: (plan, due) => `${plan} renewed — next due ${due}`,
+    renewRateFailed: (reason) => `Could not get the USD exchange rate for the payment date, so the renewal was not recorded: ${reason}`,
     deletedNotice: (plan) => `${plan} deleted.`,
     unsubscribedNotice: (plan) => `${plan} marked unsubscribed.`,
   },
@@ -796,6 +816,7 @@ const en: Dict = {
     save: "Save",
     added: "Bill added",
     saved: "Bill saved",
+    fxDetail: (usd, rate, date) => `US$${usd} × ${rate} · rate date ${date}`,
   },
 };
 

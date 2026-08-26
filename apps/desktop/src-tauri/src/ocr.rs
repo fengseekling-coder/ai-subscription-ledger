@@ -119,18 +119,14 @@ pub fn ocr_image_rgba(rgba: &[u8], width: usize, height: usize) -> Result<String
     use std::io::Cursor;
 
     // Convert RGBA to RGB (discard alpha channel)
-    let rgb_data:
-        Vec<u8> = rgba
-            .chunks_exact(4)
-            .flat_map(|chunk| [chunk[0], chunk[1], chunk[2]])
-            .collect();
+    let rgb_data: Vec<u8> = rgba
+        .chunks_exact(4)
+        .flat_map(|chunk| [chunk[0], chunk[1], chunk[2]])
+        .collect();
 
     // Create image from bytes
-    let img = image::RgbImage(
-        width,
-        height,
-        rgb_data.into(),
-    ).ok_or_else(|| "无法创建图像".to_string())?;
+    let img = image::RgbImage(width, height, rgb_data.into())
+        .ok_or_else(|| "无法创建图像".to_string())?;
 
     // Save to temporary buffer for tesseract
     let mut cursor = Cursor::new(Vec::new());
@@ -138,7 +134,7 @@ pub fn ocr_image_rgba(rgba: &[u8], width: usize, height: usize) -> Result<String
         .map_err(|e| format!("保存临时图像失败：{}", e))?;
 
     let data = cursor.into_inner();
-    
+
     // Initialize tesseract
     let mut handle = tesseract::Tesseract::new()
         .lang("chi_sim")

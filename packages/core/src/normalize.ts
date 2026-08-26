@@ -106,6 +106,13 @@ export function normalizeRow(row: RowInput): SubscriptionRow {
   );
   r.fee = String(r.fee ?? "").trim();
   r.actualFee = String(r.actualFee ?? "").trim();
+  // 旧数据没有这个字段时沿用原来的行为：所有关联账单都计入预算。
+  // 同时兼容早期导入中可能出现的字符串布尔值。
+  r.includeInBudget =
+    r.includeInBudget !== false && String(r.includeInBudget ?? "").trim().toLowerCase() !== "false";
+  r.initialBillRecorded =
+    r.initialBillRecorded === true ||
+    String(r.initialBillRecorded ?? "").trim().toLowerCase() === "true";
   r.usage = String(r.usage ?? "").trim();
   r.dueDate = String(r.dueDate ?? "").trim();
   r.subscribedAt = String(r.subscribedAt ?? "").slice(0, 10);
@@ -122,6 +129,11 @@ export function normalizeRow(row: RowInput): SubscriptionRow {
 }
 
 export function normalizeBill(b: Partial<Bill>): Bill {
+  const originalCurrency = b.originalCurrency === "USD" || b.originalCurrency === "CNY"
+    ? b.originalCurrency
+    : undefined;
+  const originalAmount = Number(b.originalAmount);
+  const exchangeRate = Number(b.exchangeRate);
   return {
     id: b.id || newId(),
     subscriptionId: String(b.subscriptionId || ""),
@@ -130,5 +142,15 @@ export function normalizeBill(b: Partial<Bill>): Bill {
     orderId: String(b.orderId || "").trim(),
     note: String(b.note || "").trim(),
     kind: b.kind === "renewal" ? "renewal" : "payment",
+    ...(originalCurrency && Number.isFinite(originalAmount) && originalAmount >= 0
+      ? { originalCurrency, originalAmount }
+      : {}),
+    ...(originalCurrency === "USD" && Number.isFinite(exchangeRate) && exchangeRate > 0
+      ? {
+          exchangeRate,
+          exchangeRateDate: String(b.exchangeRateDate || "").slice(0, 10),
+          exchangeRateSource: String(b.exchangeRateSource || "").trim(),
+        }
+      : {}),
   };
 }

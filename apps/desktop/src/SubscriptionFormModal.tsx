@@ -1,9 +1,10 @@
 import {
   addBillWithDetails,
+  addInitialBillWithDetails,
   addRowWithDetails,
   deleteRow,
   effectiveFee,
-  feeToCnyAmount,
+  markInitialBillsRecorded,
   moneyValue,
   normalizeEnglishMonthDate,
   runConnectorPaste,
@@ -19,6 +20,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { readImage } from "@tauri-apps/plugin-clipboard-manager";
 import { useEffect, useRef, useState } from "react";
 import { CalendarPicker } from "./CalendarPicker";
+import { billDraftFromSubscriptionCharge } from "./exchangeRate";
 import { resolveLang, tFor } from "./i18n";
 import {
   BILLING_MODEL_VALUES,
@@ -52,9 +54,14 @@ export type SubscriptionFormDraft = {
   usage: string;
   subscribed: boolean;
   expired: boolean;
+  includeInBudget: boolean;
 };
 
 type Currency = "CNY" | "USD";
+type RenewHandlerResult = AppState | void;
+type RenewHandler = (
+  index: number
+) => RenewHandlerResult | PromiseLike<RenewHandlerResult>;
 
 const USD_PREFIX_RE = /^\s*(?:\$|US\$|USD)/i;
 const AMOUNT_PREFIX_RE = /^\s*(?:(?:USD|U\.?S\.?|US)\s*\$?|\$|¥|￥)\s*/i;
@@ -234,6 +241,7 @@ export function SubscriptionFormModal({
   onClose,
   onCommit,
   onNotice,
+  onRenew,
   onRequestConfirmation,
 }: {
   mode: "add" | "edit";
@@ -245,6 +253,7 @@ export function SubscriptionFormModal({
   onClose: () => void;
   onCommit: (next: AppState) => void;
   onNotice: (text: string, danger?: boolean) => void;
+  onRenew?: RenewHandler;
   onRequestConfirmation: RequestConfirmation;
 }) {
   const ft = tFor(resolveLang(language));
@@ -276,7 +285,7 @@ export function SubscriptionFormModal({
     dueDate?: string;
   }>({});
   const [feeError, setFeeError] = useState<string | null>(null);
-  const [subscribedChecked, setSubscribedChecked] = useState(draft.subscribed);
+  const [includeInBudgetChecked, setIncludeInBudgetChecked] = useState(draft.includeInBudget);
   const legacyConcepts = formDefaultsFromCategory(draft.category);
   const [purchaseChannel] = useState(
     draft.purchaseChannel ?? legacyConcepts.purchaseChannel
@@ -299,15 +308,19 @@ export function SubscriptionFormModal({
   const [currency, setCurrency] = useState<Currency>(() => currencyForDraft(draft, isAdd));
   const dueDateRequired = billingModelNeedsDueDate(billingModel);
   const category = isAdd ? defaultCategoryForProvider(provider) : legacyConcepts.category;
+  const modalResetKey = `${mode}:${editIndex ?? "new"}`;
+  const modalResetKeyRef = useRef<string | null>(null);
+  const previousDraftDueDateRef = useRef(draft.dueDate);
 
-  /* eslint-disable react-hooks/set-state-in-effect -- 受控重置，避免父级改 key */
   useEffect(() => {
+    if (modalResetKeyRef.current === modalResetKey) return;
+    modalResetKeyRef.current = modalResetKey;
     const legacyDefaults = formDefaultsFromCategory(draft.category);
     const nextConcepts = {
       billingModel: draft.billingModel ?? legacyDefaults.billingModel,
     };
     setMatchedSub(null);
-    setSubscribedChecked(draft.subscribed);
+    setIncludeInBudgetChecked(draft.includeInBudget);
     setProvider(providerNameForDraft(draft));
     setPlanValue(parseSeatPlan(draft.plan)?.name ?? draft.plan);
     setPlanCustom(isCustomPlanMode(draft.plan));
@@ -318,8 +331,15 @@ export function SubscriptionFormModal({
     setDueDate(draft.dueDate);
     setFeeError(null);
     setDateErrors({});
-  }, [mode, editIndex, draft, isAdd]);
-  /* eslint-enable react-hooks/set-state-in-effect */
+  }, [draft, isAdd, modalResetKey]);
+
+  useEffect(() => {
+    const previousDueDate = previousDraftDueDateRef.current;
+    previousDraftDueDateRef.current = draft.dueDate;
+    if (isAdd || previousDueDate === draft.dueDate) return;
+    setDueDate(draft.dueDate);
+    setDateErrors((prev) => ({ ...prev, dueDate: undefined }));
+  }, [draft.dueDate, isAdd]);
 
   const handlePasteImage = async () => {
     try {
@@ -544,6 +564,32 @@ export function SubscriptionFormModal({
     if (preset) fillFeeForPreset(preset, billingModel, next);
   };
 
+  const canRenew = Boolean(
+    !isAdd && editRow && editIndex !== null && dueDateRequired && onRenew
+  );
+
+  const handleRenew = async () => {
+    if (!canRenew || !onRenew || editIndex === null || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const renewedState = await onRenew(editIndex);
+      if (renewedState) {
+        const renewedRow = renewedState.rows[editIndex];
+        if (renewedRow && billingModelNeedsDueDate(renewedRow.billingModel)) {
+          setDueDate(renewedRow.dueDate);
+          setDateErrors((prev) => ({ ...prev, dueDate: undefined }));
+        }
+      }
+    } catch (error) {
+      showModalNotice(
+        ft.form.renewFailed(error instanceof Error ? error.message : "未知错误"),
+        true
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const deleteCurrentSubscription = () => {
     if (!editRow || editIndex === null) return;
     const result = deleteRow(state, editIndex);
@@ -673,8 +719,9 @@ export function SubscriptionFormModal({
                 subscribedAt: subValidation.normalized ?? "",
                 dueDate: dueDateRequired ? (dueValidation.normalized ?? "") : "",
                 usage: String(fd.get("usage") ?? "").trim(),
-                subscribed: fd.get("subscribed") === "on",
-                expired: fd.get("expired") === "on",
+                subscribed: isAdd ? true : draft.subscribed,
+                expired: isAdd ? false : draft.expired,
+                includeInBudget: fd.get("includeInBudget") === "on",
                 purchaseChannel,
                 billingModel,
               };
@@ -683,32 +730,48 @@ export function SubscriptionFormModal({
                 const matched = subById(state, matchedSub.id);
                 if (matched) {
                   const persistedCharge = actualFeeRaw || fee || effectiveFee(matched);
-                  const amount = feeToCnyAmount(persistedCharge);
                   const note = String(fd.get("usage") ?? "").trim();
                   const paidAt = subValidation.normalized || todayLocalISO();
                   const needsRestore = matched.expired || !matched.subscribed;
+                  const needsMatchedUpdate =
+                    needsRestore || matched.includeInBudget !== patch.includeInBudget;
+                  const idx = state.rows.findIndex((r) => r.id === matchedSub.id);
                   let nextState: AppState = state;
-                  if (needsRestore) {
-                    const idx = state.rows.findIndex((r) => r.id === matchedSub.id);
-                    const restored = updateRow(state, idx, {
-                      expired: false,
-                      subscribed: true,
+                  if (needsMatchedUpdate) {
+                    const matchedUpdate = updateRow(state, idx, {
+                      includeInBudget: patch.includeInBudget,
+                      ...(needsRestore ? { expired: false, subscribed: true } : {}),
                     });
-                    if ("error" in restored) {
-                      showModalNotice(ft.form.restoreFailed, true);
+                    if ("error" in matchedUpdate) {
+                      if (needsRestore) showModalNotice(ft.form.restoreFailed, true);
                       setIsSubmitting(false);
                       return;
                     }
-                    nextState = restored;
+                    nextState = matchedUpdate;
                   }
-                  if (amount > 0) {
-                    const billed = addBillWithDetails(nextState, {
-                      subscriptionId: matched.id,
-                      amount: String(amount),
-                      paidAt,
-                      orderId: "",
-                      note,
-                    });
+                  if (moneyValue(persistedCharge) > 0) {
+                    let billDraft;
+                    try {
+                      billDraft = await billDraftFromSubscriptionCharge({
+                        subscriptionId: matched.id,
+                        fee: persistedCharge,
+                        paidAt,
+                        note,
+                      });
+                    } catch (error) {
+                      onCommit(nextState);
+                      onClose();
+                      onNotice(
+                        ft.form.billPendingRate(
+                          matched.plan,
+                          error instanceof Error ? error.message : "未知错误"
+                        ),
+                        true
+                      );
+                      setIsSubmitting(false);
+                      return;
+                    }
+                    const billed = addBillWithDetails(nextState, billDraft);
                     if ("error" in billed) {
                       showModalNotice(billed.error, true);
                       setIsSubmitting(false);
@@ -716,8 +779,8 @@ export function SubscriptionFormModal({
                     }
                     onCommit(billed);
                     onClose();
-                    showModalNotice(ft.form.billAdded(matched.plan, String(amount)));
-                  } else if (needsRestore) {
+                    onNotice(ft.form.billAdded(matched.plan, billDraft.amount));
+                  } else if (needsMatchedUpdate) {
                     onCommit(nextState);
                     onClose();
                   } else {
@@ -735,12 +798,47 @@ export function SubscriptionFormModal({
                   setIsSubmitting(false);
                   return;
                 }
-                onCommit(r);
-                onClose();
-                showModalNotice(ft.form.add);
+                const addedRow = r.rows[r.rows.length - 1];
+                const paidAt = addedRow.subscribedAt || todayLocalISO();
+                const charge = effectiveFee(addedRow);
+                if (!(moneyValue(charge) > 0)) {
+                  onCommit(markInitialBillsRecorded(r, [addedRow.id]));
+                  onClose();
+                  onNotice(ft.form.add);
+                  setIsSubmitting(false);
+                  return;
+                }
+                try {
+                  const billDraft = await billDraftFromSubscriptionCharge({
+                    subscriptionId: addedRow.id,
+                    fee: charge,
+                    paidAt,
+                    note: addedRow.usage,
+                  });
+                  const billed = addInitialBillWithDetails(r, billDraft);
+                  if ("error" in billed) {
+                    showModalNotice(billed.error, true);
+                    setIsSubmitting(false);
+                    return;
+                  }
+                  onCommit(billed);
+                  onClose();
+                  onNotice(ft.form.billAdded(addedRow.plan, billDraft.amount));
+                } catch (error) {
+                  // 订阅资料依然保存；下一次启动会安全地重试尚未入账的首笔账单。
+                  onCommit(r);
+                  onClose();
+                  onNotice(
+                    ft.form.billPendingRate(
+                      addedRow.plan,
+                      error instanceof Error ? error.message : "未知错误"
+                    ),
+                    true
+                  );
+                }
                 const idx = r.rows.length - 1;
                 const msg = subscribeNoticeAfterToggle(r, idx);
-                if (msg) showModalNotice(msg);
+                if (msg) onNotice(msg);
               } else if (editIndex !== null) {
                 const result = updateRow(state, editIndex, patch);
                 if ("error" in result) {
@@ -1044,30 +1142,25 @@ export function SubscriptionFormModal({
                 <label className="form-check">
                   <input
                     type="checkbox"
-                    name="subscribed"
-                    checked={subscribedChecked}
-                    onChange={(e) => setSubscribedChecked(e.target.checked)}
+                    name="includeInBudget"
+                    checked={includeInBudgetChecked}
+                    onChange={(e) => setIncludeInBudgetChecked(e.target.checked)}
                   />
                   <span className="form-check__box" aria-hidden="true" />
                   <span className="form-check__text">
-                    <span className="form-check__title">{ft.form.subscribed}</span>
-                    <span className="form-check__desc">{ft.form.subscribedDesc}</span>
+                    <span className="form-check__title">{ft.form.includeInBudget}</span>
+                    <span className="form-check__desc">{ft.form.includeInBudgetDesc}</span>
                   </span>
                 </label>
-
-                {subscribedChecked && (
-                  <label className="form-check">
-                    <input
-                      type="checkbox"
-                      name="expired"
-                      defaultChecked={draft.expired}
-                    />
-                    <span className="form-check__box" aria-hidden="true" />
-                    <span className="form-check__text">
-                      <span className="form-check__title">{ft.form.expired}</span>
-                      <span className="form-check__desc">{ft.form.expiredDesc}</span>
-                    </span>
-                  </label>
+                {canRenew && (
+                  <button
+                    type="button"
+                    className="btn btn--renew"
+                    onClick={() => void handleRenew()}
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? ft.form.renewing : ft.form.renew}
+                  </button>
                 )}
               </div>
             </section>

@@ -1,4 +1,5 @@
 mod db;
+mod fx;
 mod monitor;
 mod ocr;
 
@@ -79,6 +80,12 @@ async fn check_all_monitors_cmd(
 #[tauri::command]
 fn get_supported_services() -> Vec<monitor::SupportedService> {
     monitor::supported_services()
+}
+
+/** 查询某个付款日适用的 USD → CNY 参考汇率。 */
+#[tauri::command]
+async fn get_usd_cny_rate(date: String) -> Result<fx::ExchangeRateQuote, String> {
+    fx::usd_cny_rate_for(&date).await
 }
 
 #[tauri::command]
@@ -279,6 +286,7 @@ pub fn run() {
             check_monitor_cmd,
             check_all_monitors_cmd,
             get_supported_services,
+            get_usd_cny_rate,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

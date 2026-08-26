@@ -1,14 +1,19 @@
 import {
   clearExpired,
   deleteRow,
+  effectiveFee,
+  formatDate,
+  looksLikeUsdFee,
   markExpired,
   markUnrenewed,
   renewRow,
   subscribeNoticeAfterToggle,
   toggleSubscribe,
   type AppState,
+  type UsdCnyRateSnapshot,
 } from "@ai-sub/core";
 import { resolveLang, tFor } from "./i18n";
+import { getUsdCnyRate, usdRateSnapshot } from "./exchangeRate";
 import type { SubTableHandlers } from "./SubTable";
 import type { RequestConfirmation } from "./ui/ConfirmDialog";
 
@@ -48,8 +53,23 @@ export function buildSubTableHandlers(
     },
     onEdit: setEditIndex,
     onPickDue: setDuePickIndex,
-    onRenew: (i) => {
-      runAction(() => renewRow(state, i), (result) => {
+    onRenew: async (i) => {
+      const row = state.rows[i];
+      if (!row) return;
+      const ref = new Date();
+      let usdCnyRate: UsdCnyRateSnapshot | undefined;
+      if (looksLikeUsdFee(effectiveFee(row))) {
+        try {
+          usdCnyRate = usdRateSnapshot(await getUsdCnyRate(formatDate(ref)));
+        } catch (error) {
+          showNotice(
+            t.renewRateFailed(error instanceof Error ? error.message : "未知错误"),
+            true
+          );
+          return;
+        }
+      }
+      runAction(() => renewRow(state, i, ref, usdCnyRate), (result) => {
         if (renewNotice) {
           showNotice(t.renewedNotice(result.rows[i].plan, result.rows[i].dueDate));
         }

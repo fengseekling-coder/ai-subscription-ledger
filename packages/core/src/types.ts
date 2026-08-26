@@ -1,6 +1,9 @@
 /** 账单类型：支付 or 续费 */
 export type BillKind = "payment" | "renewal";
 
+/** 账单原始币种。账单 amount 始终以人民币入账。 */
+export type BillCurrency = "CNY" | "USD";
+
 /** 订阅分类 */
 export type SubscriptionCategory =
   | "AI 服务"
@@ -33,6 +36,10 @@ export interface SubscriptionRow {
   fee: string;
   /** 实付金额（可选）。设置后（含 "0"）优先于 fee 作为每周期实际入账金额；空串/未定义 = 未设置，回退用 fee */
   actualFee?: string;
+  /** 是否将关联账单计入预算；关闭后账单仍保留在账单列表中。 */
+  includeInBudget: boolean;
+  /** 首笔订阅账单已经处理过（含用户主动删除），用于防止迁移或启动时重复入账。 */
+  initialBillRecorded?: boolean;
   subscribed: boolean;
   dueDate: string;
   subscribedAt: string;
@@ -49,6 +56,15 @@ export interface Bill {
   orderId: string;
   note: string;
   kind: BillKind;
+  /** 原始付款金额；金额栏 amount 始终保存换算后的人民币。 */
+  originalAmount?: number;
+  originalCurrency?: BillCurrency;
+  /** 美元账单在入账时锁定的 USD → CNY 汇率。 */
+  exchangeRate?: number;
+  /** 汇率数据实际生效的交易日（周末/节假日会回退至最近发布日）。 */
+  exchangeRateDate?: string;
+  /** 汇率来源，便于账单追溯。 */
+  exchangeRateSource?: string;
 }
 
 /** 自动监控配置：连接到远程 API 检查订阅状态 */

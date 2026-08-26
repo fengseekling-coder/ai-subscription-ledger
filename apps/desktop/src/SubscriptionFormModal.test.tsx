@@ -1,4 +1,4 @@
-import { loadFromJson, USD_CNY_RATE, type AppState, type SubscriptionRow } from "@ai-sub/core";
+import { loadFromJson, type AppState, type SubscriptionRow } from "@ai-sub/core";
 import { invoke } from "@tauri-apps/api/core";
 import { readImage } from "@tauri-apps/plugin-clipboard-manager";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -31,6 +31,7 @@ const EMPTY_DRAFT: SubscriptionFormDraft = {
   usage: "",
   subscribed: false,
   expired: false,
+  includeInBudget: true,
 };
 
 function ledger(rows: Partial<SubscriptionRow>[] = []): AppState {
@@ -46,6 +47,7 @@ function ledger(rows: Partial<SubscriptionRow>[] = []): AppState {
       dueDate: "",
       subscribedAt: "2026-01-01",
       expired: false,
+      includeInBudget: true,
       ...r,
     })),
     bills: [],
@@ -59,12 +61,14 @@ type Overrides = {
   editIndex?: number | null;
   editRow?: SubscriptionRow | null;
   language?: AppState["language"];
+  onRenew?: (index: number) => void | AppState | Promise<void | AppState>;
 };
 
 function setup(over: Overrides = {}) {
   const onCommit = vi.fn();
   const onClose = vi.fn();
   const onNotice = vi.fn();
+  const onRenew = over.onRenew ?? vi.fn();
   const onRequestConfirmation = vi.fn<(request: ConfirmationRequest) => void>();
   const state = over.state ?? ledger();
   render(
@@ -78,10 +82,11 @@ function setup(over: Overrides = {}) {
       onClose={onClose}
       onCommit={onCommit}
       onNotice={onNotice}
+      onRenew={onRenew}
       onRequestConfirmation={onRequestConfirmation}
     />
   );
-  return { onCommit, onClose, onNotice, onRequestConfirmation, state };
+  return { onCommit, onClose, onNotice, onRenew, onRequestConfirmation, state };
 }
 
 beforeEach(() => {
@@ -109,6 +114,98 @@ describe("标题与副标题", () => {
     expect(screen.getByLabelText("Billing model")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+  });
+});
+
+describe("预算选项", () => {
+  it("移除订阅状态控件，计入预算默认选中", () => {
+    setup();
+
+    expect(screen.queryByText("已订阅")).not.toBeInTheDocument();
+    expect(screen.queryByText("标记为已过期")).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /计入预算/ })).toBeChecked();
+  });
+
+  it("取消计入预算后提交 false，并将新增订阅写为已订阅且未过期", async () => {
+    const { onCommit } = setup();
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /计入预算/ }));
+    await userEvent.selectOptions(screen.getByLabelText("套餐 / 额度"), "__custom__");
+    await userEvent.type(screen.getByLabelText("套餐 / 额度"), "ChatGPT Plus");
+    await userEvent.click(screen.getByRole("button", { name: "添加" }));
+
+    await waitFor(() => expect(onCommit).toHaveBeenCalled());
+    expect((onCommit.mock.calls[0][0] as AppState).rows[0]).toMatchObject({
+      includeInBudget: false,
+      subscribed: true,
+      expired: false,
+    });
+  });
+});
+
+describe("续费操作", () => {
+  it("仅编辑周期订阅时显示续费按钮", () => {
+    const state = ledger([{ billingModel: "月付", dueDate: "2026-08-01" }]);
+    setup({
+      mode: "edit",
+      state,
+      editIndex: 0,
+      editRow: state.rows[0],
+      draft: state.rows[0],
+    });
+
+    expect(screen.getByRole("button", { name: "续费" })).toHaveClass("btn--renew");
+  });
+
+  it("新增模式和非周期计费不显示续费按钮", () => {
+    setup();
+    expect(screen.queryByRole("button", { name: "续费" })).not.toBeInTheDocument();
+  });
+
+  it("额度包编辑时不显示续费按钮", () => {
+    const state = ledger([{ billingModel: "额度包", dueDate: "" }]);
+    setup({
+      mode: "edit",
+      state,
+      editIndex: 0,
+      editRow: state.rows[0],
+      draft: state.rows[0],
+    });
+
+    expect(screen.queryByRole("button", { name: "续费" })).not.toBeInTheDocument();
+  });
+
+  it("点击续费调用回调并同步新的到期日，同时保留弹窗", async () => {
+    const state = ledger([{ billingModel: "月付", dueDate: "2026-08-01" }]);
+    const renewedState: AppState = {
+      ...state,
+      rows: state.rows.map((row, index) =>
+        index === 0
+          ? { ...row, dueDate: "2026-09-01", subscribed: true, expired: false }
+          : row
+      ),
+    };
+    const onRenew = vi.fn(() => renewedState);
+    const { onClose } = setup({
+      mode: "edit",
+      state,
+      editIndex: 0,
+      editRow: state.rows[0],
+      draft: state.rows[0],
+      onRenew,
+    });
+
+    await userEvent.type(screen.getByLabelText("备注"), "未保存备注");
+    await userEvent.click(screen.getByRole("button", { name: "续费" }));
+
+    expect(onRenew).toHaveBeenCalledWith(0);
+    await waitFor(() =>
+      expect(
+        (document.querySelector('input[name="dueDate"]') as HTMLInputElement).value
+      ).toBe("2026-09-01")
+    );
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("备注")).toHaveValue("未保存备注");
   });
 });
 
@@ -448,6 +545,27 @@ describe("新增与编辑的提交结果", () => {
     expect(next.rows[0].plan).toBe("Claude Max");
     expect(next.rows[0].fee).toBe("US$20");
   });
+
+  it("编辑时保留原订阅状态，并提交计入预算选择", async () => {
+    const s = ledger([{ plan: "Claude Pro", subscribed: true, expired: true, includeInBudget: true }]);
+    const { onCommit } = setup({
+      mode: "edit",
+      state: s,
+      editIndex: 0,
+      editRow: s.rows[0],
+      draft: s.rows[0],
+    });
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /计入预算/ }));
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(onCommit).toHaveBeenCalled());
+    expect((onCommit.mock.calls[0][0] as AppState).rows[0]).toMatchObject({
+      includeInBudget: false,
+      subscribed: true,
+      expired: true,
+    });
+  });
 });
 
 describe("关闭", () => {
@@ -519,15 +637,45 @@ describe("OCR 匹配已有订阅", () => {
     const { onCommit } = setup({ state });
     await matchExisting("ChatGPT Plus", "20");
 
+    await userEvent.click(screen.getByRole("checkbox", { name: /计入预算/ }));
     await userEvent.selectOptions(screen.getByLabelText("套餐 / 额度"), "ChatGPT Plus");
+    vi.mocked(invoke).mockResolvedValueOnce({
+      rate: 7.31,
+      rateDate: "2026-01-01",
+      source: "Frankfurter / ECB reference rates",
+    });
     await userEvent.click(screen.getByRole("button", { name: "添加" }));
 
     await waitFor(() => expect(onCommit).toHaveBeenCalled());
     const next = onCommit.mock.calls[0][0] as AppState;
     expect(next.rows).toHaveLength(1);
+    expect(next.rows[0].includeInBudget).toBe(false);
     expect(next.bills).toHaveLength(1);
-    expect(next.bills[0].amount).toBeCloseTo(20 * USD_CNY_RATE, 2);
+    expect(next.bills[0]).toMatchObject({
+      amount: 146.2,
+      originalAmount: 20,
+      originalCurrency: "USD",
+      exchangeRate: 7.31,
+      exchangeRateDate: "2026-01-01",
+    });
     expect(next.bills[0].subscriptionId).toBe(state.rows[0].id);
+  });
+
+  it("匹配过期订阅时恢复兼容状态并同步计入预算选择", async () => {
+    const state = ledger([{ plan: "ChatGPT Plus", fee: "US$20", subscribed: true, expired: true }]);
+    const { onCommit } = setup({ state });
+    await matchExisting("ChatGPT Plus", "20");
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /计入预算/ }));
+    await userEvent.selectOptions(screen.getByLabelText("套餐 / 额度"), "ChatGPT Plus");
+    await userEvent.click(screen.getByRole("button", { name: "添加" }));
+
+    await waitFor(() => expect(onCommit).toHaveBeenCalled());
+    expect((onCommit.mock.calls[0][0] as AppState).rows[0]).toMatchObject({
+      includeInBudget: false,
+      subscribed: true,
+      expired: false,
+    });
   });
 
   it("实付 0 时不写账单", async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addBillWithDetails,
+  addInitialBillWithDetails,
   addRowWithDetails,
   billDraftFor,
   billToDraft,
@@ -191,6 +192,39 @@ describe("addBillWithDetails", () => {
   });
 });
 
+describe("addInitialBillWithDetails", () => {
+  it("records the first payment with an immutable USD/CNY snapshot", () => {
+    const s = stateWith([{ fee: "US$20", initialBillRecorded: false }]);
+    const next = unwrap(
+      addInitialBillWithDetails(
+        s,
+        {
+          subscriptionId: "r1",
+          amount: "146.2",
+          paidAt: "2026-07-15",
+          orderId: "",
+          note: "订阅入账",
+          originalAmount: 20,
+          originalCurrency: "USD",
+          exchangeRate: 7.31,
+          exchangeRateDate: "2026-07-15",
+          exchangeRateSource: "Frankfurter / ECB reference rates",
+        },
+        REF
+      )
+    );
+
+    expect(next.rows[0].initialBillRecorded).toBe(true);
+    expect(next.bills[0]).toMatchObject({
+      amount: 146.2,
+      originalAmount: 20,
+      originalCurrency: "USD",
+      exchangeRate: 7.31,
+      exchangeRateDate: "2026-07-15",
+    });
+  });
+});
+
 describe("updateBillDetails / billToDraft", () => {
   const base = () =>
     stateWith(
@@ -300,6 +334,24 @@ describe("renewRow", () => {
     const s = stateWith([{ fee: "US$20", dueDate: "2026-07-10" }]);
     const next = unwrap(renewRow(s, 0, REF));
     expect(next.bills[0].amount).toBeCloseTo(20 * USD_CNY_RATE, 2);
+  });
+
+  it("uses the supplied payment-day USD/CNY quote instead of the legacy reference rate", () => {
+    const s = stateWith([{ fee: "US$20", dueDate: "2026-07-10" }]);
+    const next = unwrap(
+      renewRow(s, 0, REF, {
+        rate: 7.31,
+        rateDate: "2026-07-15",
+        source: "Frankfurter / ECB reference rates",
+      })
+    );
+    expect(next.bills[0]).toMatchObject({
+      amount: 146.2,
+      originalAmount: 20,
+      originalCurrency: "USD",
+      exchangeRate: 7.31,
+      exchangeRateDate: "2026-07-15",
+    });
   });
 
   it("实付覆盖金额生成续费账单", () => {

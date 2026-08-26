@@ -1,10 +1,14 @@
 import {
+  addInitialBillWithDetails,
   billDraftFor,
   billToDraft,
   billsForCalendarMonth,
   computeSummary,
+  effectiveFee,
   expiredRowEntries,
   fmtMoney,
+  markInitialBillsRecorded,
+  moneyValue,
   pendingRenewItems,
   pickDueDate,
   sortedBills,
@@ -26,6 +30,7 @@ import { StatsView } from "./StatsView";
 import { SubTable } from "./SubTable";
 import { buildSubTableHandlers } from "./subTableHandlers";
 import { SubscriptionFormModal, type SubscriptionFormDraft } from "./SubscriptionFormModal";
+import { billDraftFromSubscriptionCharge } from "./exchangeRate";
 import { loadAppState } from "./storage";
 import { useDebouncedPersistence } from "./useDebouncedPersistence";
 import { useRenewReminders } from "./useRenewReminders";
@@ -45,6 +50,7 @@ const NEW_SUBSCRIPTION_DRAFT: SubscriptionFormDraft = {
   plan: "",
   fee: "",
   actualFee: "",
+  includeInBudget: true,
   subscribedAt: "",
   dueDate: "",
   usage: "",
@@ -158,6 +164,7 @@ export default function App() {
   const [notifyOn, setNotifyOn] = useState(localStorage.getItem("ai-sub-notify") === "on");
   // 账单表单：新增时 billId 为 null，编辑时带上要改的账单 id
   const [billForm, setBillForm] = useState<{ billId: string | null; draft: BillDraft } | null>(null);
+  const initialBillMigrationAttempted = useRef(false);
   
   // Hooks
   const { notice, showNotice } = useNotice();
@@ -244,6 +251,54 @@ export default function App() {
   const requestConfirmation = useCallback((request: ConfirmationRequest) => {
     setConfirmation(request);
   }, []);
+
+  // 旧版本只有“是否计入预算”标记，并不会创建首笔账单。只在载入后补一次：
+  // - 已有关联账单的记录只补处理标记；
+  // - 无账单的记录按订阅日期补一笔；
+  // - 用户后来删除账单时，initialBillRecorded 会阻止它在下次启动时再次出现。
+  useEffect(() => {
+    if (!state || initialBillMigrationAttempted.current) return;
+    initialBillMigrationAttempted.current = true;
+    let cancelled = false;
+
+    const migrate = async () => {
+      let next = state;
+      const markOnly: string[] = [];
+
+      for (const row of state.rows) {
+        if (!row.subscribed || row.initialBillRecorded) continue;
+        if (next.bills.some((bill) => bill.subscriptionId === row.id)) {
+          markOnly.push(row.id);
+          continue;
+        }
+        const charge = effectiveFee(row);
+        if (!row.subscribedAt || !(moneyValue(charge) > 0)) {
+          if (row.subscribedAt) markOnly.push(row.id);
+          continue;
+        }
+        try {
+          const draft = await billDraftFromSubscriptionCharge({
+            subscriptionId: row.id,
+            fee: charge,
+            paidAt: row.subscribedAt,
+            note: row.usage,
+          });
+          const billed = addInitialBillWithDetails(next, draft);
+          if (!("error" in billed)) next = billed;
+        } catch {
+          // 离线或汇率服务暂不可用时不写入旧的固定汇率；保留未处理标记以便下次启动重试。
+        }
+      }
+
+      next = markInitialBillsRecorded(next, markOnly);
+      if (!cancelled && next !== state) commit(next);
+    };
+
+    void migrate();
+    return () => {
+      cancelled = true;
+    };
+  }, [state, commit]);
 
   const changeLanguage = useCallback((next: LangPref) => {
     setState((prev) => (prev ? { ...prev, language: next } : prev));
@@ -363,6 +418,7 @@ export default function App() {
             plan: editRow.plan,
             fee: editRow.fee,
             actualFee: editRow.actualFee ?? "",
+            includeInBudget: editRow.includeInBudget,
             subscribedAt: editRow.subscribedAt,
             dueDate: editRow.dueDate,
             usage: editRow.usage,
@@ -565,6 +621,7 @@ export default function App() {
           onClose={closeSubModal}
           onCommit={commit}
           onNotice={showNotice}
+          onRenew={subHandlers?.onRenew}
           onRequestConfirmation={requestConfirmation}
         />
       )}

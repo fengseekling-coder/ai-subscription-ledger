@@ -59,3 +59,33 @@ describe("账单删除", () => {
     expect(onNotice).toHaveBeenCalledWith("账单已删除");
   });
 });
+
+describe("美元换汇快照", () => {
+  it("显示入账时锁定的美元金额、汇率与生效日", () => {
+    const state = ledger();
+    const bills = [
+      {
+        ...state.bills[0],
+        amount: 146.2,
+        originalAmount: 20,
+        originalCurrency: "USD" as const,
+        exchangeRate: 7.31,
+        exchangeRateDate: "2026-01-01",
+      },
+    ];
+    render(
+      <BillsView
+        state={state}
+        bills={bills}
+        onCommit={vi.fn()}
+        onNotice={vi.fn()}
+        onEdit={vi.fn()}
+        language="zh-CN"
+        onRequestConfirmation={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("¥146.2")).toBeInTheDocument();
+    expect(screen.getByText("US$20 × 7.31 · 2026-01-01 汇率")).toBeInTheDocument();
+  });
+});

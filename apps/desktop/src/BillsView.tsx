@@ -42,7 +42,21 @@ export function BillsView({ state, bills, onCommit, onNotice, onEdit, language, 
                     {bill.kind === "renewal" && <span className="kind-tag">{t.renewalTag}</span>}
                   </td>
                   <td>
-                    <span>{fmtMoney(bill.amount)}</span>
+                    <div className="bill-amount">
+                      <span>{fmtMoney(bill.amount)}</span>
+                      {bill.originalCurrency === "USD" &&
+                        Number.isFinite(bill.originalAmount) &&
+                        Number.isFinite(bill.exchangeRate) &&
+                        bill.exchangeRateDate && (
+                          <span className="bill-amount__fx">
+                            {t.fxDetail(
+                              Number(bill.originalAmount),
+                              Number(bill.exchangeRate),
+                              bill.exchangeRateDate
+                            )}
+                          </span>
+                        )}
+                    </div>
                   </td>
                   <td>
                     <span>{bill.orderId || <span className="due-muted">—</span>}</span>

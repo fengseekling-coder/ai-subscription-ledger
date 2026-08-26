@@ -8,9 +8,28 @@ export function billsForCalendarMonth(bills: Bill[], monthKey?: string): Bill[] 
   return bills.filter((b) => String(b.paidAt || "").slice(0, 7) === prefix);
 }
 
+/**
+ * 获取计入预算的当月账单。账单本身始终保留；预算归属由关联订阅统一控制。
+ * 无法关联到订阅的历史账单保守地继续计入预算，避免迁移时静默漏算支出。
+ */
+export function budgetBillsForCalendarMonth(state: AppState, monthKey?: string): Bill[] {
+  const rowsById = new Map(state.rows.map((row) => [row.id, row]));
+  return billsForCalendarMonth(state.bills, monthKey).filter(
+    (bill) => rowsById.get(bill.subscriptionId)?.includeInBudget !== false
+  );
+}
+
 /** 仅从账单计算指定月份的支出总额（不从订阅 fee 推算） */
 export function monthSpendFromBillsOnly(bills: Bill[], monthKey?: string): number {
   return billsForCalendarMonth(bills, monthKey).reduce((s, b) => s + (Number(b.amount) || 0), 0);
+}
+
+/** 仅统计已选择“计入预算”的账单。 */
+export function monthSpendFromBudgetBills(state: AppState, monthKey?: string): number {
+  return budgetBillsForCalendarMonth(state, monthKey).reduce(
+    (sum, bill) => sum + (Number(bill.amount) || 0),
+    0
+  );
 }
 
 /** 获取 3 天内待续费的订阅项列表（按剩余天数升序排序） */
@@ -37,7 +56,7 @@ export function pendingRenewItems(rows: SubscriptionRow[], ref = new Date()) {
  */
 export function computeSummary(state: AppState, ref = new Date()): Summary {
   const mk = currentMonthKey(ref);
-  const monthSpend = monthSpendFromBillsOnly(state.bills, mk);
+  const monthSpend = monthSpendFromBudgetBills(state, mk);
   const budget = Number(state.budget) || 500;
   const left = budget - monthSpend;
   const active = state.rows.filter((r) => isActiveSubscription(r, ref)).length;

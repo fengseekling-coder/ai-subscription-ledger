@@ -4,31 +4,11 @@ import {
   dueMeta,
   effectiveFee,
   feeDisplayParts,
-  categoryClass,
   isCreditLike,
   type AppState,
   type SubscriptionRow,
 } from "@ai-sub/core";
-import { categoryLabel } from "./categoryLabel";
 import { resolveLang, tFor, type Dict } from "./i18n";
-
-const ReadCell = memo(function ReadCell({
-  value,
-  className,
-  empty = "dash",
-}: {
-  value: string;
-  className?: string;
-  /** dash = show — ; blank = leave empty */
-  empty?: "dash" | "blank";
-}) {
-  const v = (value || "").trim();
-  return (
-    <td className={className ?? ""} title={v || undefined}>
-      {v ? v : empty === "blank" ? null : <span className="text-tertiary">—</span>}
-    </td>
-  );
-});
 
 export type SubTableHandlers = {
   onToggle: (index: number) => void;
@@ -46,7 +26,6 @@ type SubTableRowProps = {
   index: number;
   handlers: SubTableHandlers;
   t: Dict["table"];
-  categoryLabels: Dict["form"]["categoryOptions"];
 };
 
 const SubTableRow = memo(function SubTableRow({
@@ -54,7 +33,6 @@ const SubTableRow = memo(function SubTableRow({
   index,
   handlers,
   t,
-  categoryLabels,
 }: SubTableRowProps) {
   const {
     onToggle,
@@ -67,23 +45,27 @@ const SubTableRow = memo(function SubTableRow({
     onDelete,
   } = handlers;
 
+  const dueDate = String(row.dueDate || "").trim();
+
   // dueMeta 只取 cls（结构化的配色档位）；文案改由字典按剩余天数拼，
   // 这样不必让 core 返回本地化字符串。
-  const due = useMemo(() => dueMeta(row.dueDate), [row.dueDate]);
+  const due = useMemo(() => dueMeta(dueDate), [dueDate]);
   const dueLabel = useMemo(() => {
-    const left = daysUntil(row.dueDate);
+    const left = daysUntil(dueDate);
     if (left === null) return due.label;
     if (left < 0) return t.overdueDays(Math.abs(left));
     if (left === 0) return t.dueToday;
     return t.daysLeft(left);
-  }, [row.dueDate, due.label, t]);
+  }, [dueDate, due.label, t]);
   // 实付为可选覆盖项：设置了实付（含 0）时，金额列只显示实付，避免重复展示定价。
   const hasActual = String(row.actualFee ?? "").trim() !== "";
   const effectiveFeeStr = effectiveFee(row);
   const effectiveParts = useMemo(() => feeDisplayParts(effectiveFeeStr), [effectiveFeeStr]);
-  const categoryStyle = {
-    class: `category-tag--${categoryClass(row.category)}`,
-    label: categoryLabel(row.category, categoryLabels),
+  const plan = String(row.plan || "").trim();
+  const note = String(row.usage || "").trim();
+  const billTypeStyle = {
+    class: row.includeInBudget === false ? "category-tag--other" : "category-tag--ai",
+    label: row.includeInBudget === false ? t.regularBill : t.budgetBill,
   };
 
   const handleToggle = useCallback(() => onToggle(index), [onToggle, index]);
@@ -110,68 +92,86 @@ const SubTableRow = memo(function SubTableRow({
 
   return (
     <tr className={`list-item ${rowOpacity}`}>
-      <td>
-        <span className={`category-tag ${categoryStyle.class}`}>{categoryStyle.label}</span>
+      <td className="subscription-list__category">
+        <span className={`category-tag ${billTypeStyle.class}`}>{billTypeStyle.label}</span>
       </td>
 
-      <ReadCell value={row.plan} />
+      <td className="subscription-list__plan-cell" title={plan || undefined}>
+        <span className="subscription-list__plan">
+          {plan || <span className="text-tertiary">—</span>}
+        </span>
+      </td>
 
-      <td className="cell-fee">
+      <td className="subscription-list__fee cell-fee">
         <span className="cell-fee__main">{effectiveParts.primary}</span>
         {!hasActual && effectiveParts.approx && <span className="cell-fee__approx">{effectiveParts.approx}</span>}
       </td>
 
-      <ReadCell value={row.usage} className="cell-note" empty="blank" />
+      <td className="subscription-list__note cell-note">
+        {note || <span className="text-tertiary">—</span>}
+      </td>
 
-      <td>
-        {!row.subscribed ? (
-          <button
-            type="button"
-            className="btn btn--sm btn--ghost"
-            onClick={handleToggle}
-            title={t.subscribeTitle}
-          >
-            {t.subscribe}
-          </button>
-        ) : row.expired && !row.dueDate ? (
-          <div className="due-actions">
-            <span className={`due-badge ${dueBadgeClass}`}>{t.expired}</span>
-            <div className="due-actions__btns">
-              <button type="button" className="btn btn--sm" onClick={handleClearExpired}>
-                {t.restore}
-              </button>
-              <button type="button" className="btn btn--sm btn--danger" onClick={handleDelete}>
-                {t.delete}
-              </button>
-            </div>
-          </div>
-        ) : isCreditLike(row) ? (
-          <span className="text-tertiary">{t.nonCycle}</span>
-        ) : !row.dueDate ? (
-          <div className="due-actions">
-            <button type="button" className="btn btn--sm btn--ghost" onClick={handlePickDue}>
-              {t.setDate}
+      <td className="subscription-list__status">
+        <div className="subscription-list__status-content">
+          {!row.subscribed ? (
+            <button
+              type="button"
+              className="btn btn--sm btn--ghost"
+              onClick={handleToggle}
+              title={t.subscribeTitle}
+            >
+              {t.subscribe}
             </button>
-            <button type="button" className="btn btn--sm btn--ghost" onClick={handleMarkExpired}>
-              {t.expired}
-            </button>
-          </div>
-        ) : (
-          <div className="due-actions">
-            <span className={`due-badge ${dueBadgeClass}`} title={row.dueDate}>
-              {dueLabel}
-            </span>
-            {due.cls === "overdue" && (
+          ) : row.expired && !dueDate ? (
+            <div className="due-actions">
+              <span className={`due-badge ${dueBadgeClass}`}>{t.expired}</span>
               <div className="due-actions__btns">
-                <button type="button" className="btn btn--sm" onClick={handleRenew}>
-                  {t.renewed}
+                <button type="button" className="btn btn--sm" onClick={handleClearExpired}>
+                  {t.restore}
                 </button>
-                <button type="button" className="btn btn--sm btn--ghost" onClick={handleMarkUnrenewed}>
-                  {t.cancel}
+                <button type="button" className="btn btn--sm btn--danger" onClick={handleDelete}>
+                  {t.delete}
                 </button>
               </div>
-            )}
-          </div>
+            </div>
+          ) : isCreditLike(row) ? (
+            <span className="text-tertiary">{t.nonCycle}</span>
+          ) : !dueDate ? (
+            <div className="due-actions">
+              <button type="button" className="btn btn--sm btn--ghost" onClick={handlePickDue}>
+                {t.setDate}
+              </button>
+              <button type="button" className="btn btn--sm btn--ghost" onClick={handleMarkExpired}>
+                {t.expired}
+              </button>
+            </div>
+          ) : (
+            <div className="due-actions">
+              <span className={`due-badge ${dueBadgeClass}`} title={dueDate}>
+                {dueLabel}
+              </span>
+              {due.cls === "overdue" && (
+                <div className="due-actions__btns">
+                  <button type="button" className="btn btn--sm" onClick={handleRenew}>
+                    {t.renewed}
+                  </button>
+                  <button type="button" className="btn btn--sm btn--ghost" onClick={handleMarkUnrenewed}>
+                    {t.cancel}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </td>
+
+      <td className="subscription-list__date-cell">
+        {dueDate ? (
+          <time className="subscription-list__date" dateTime={dueDate}>
+            {dueDate}
+          </time>
+        ) : (
+          <span className="text-tertiary">—</span>
         )}
       </td>
 
@@ -231,15 +231,25 @@ export const SubTable = memo(function SubTable({
 
   return (
     <div className="list-container">
-      <table>
+      <table className="subscription-list">
+        <colgroup>
+          <col className="subscription-list__col subscription-list__col--category" />
+          <col className="subscription-list__col subscription-list__col--plan" />
+          <col className="subscription-list__col subscription-list__col--fee" />
+          <col className="subscription-list__col subscription-list__col--note" />
+          <col className="subscription-list__col subscription-list__col--status" />
+          <col className="subscription-list__col subscription-list__col--due-date" />
+          <col className="subscription-list__col subscription-list__col--actions" />
+        </colgroup>
         <thead>
           <tr className="list-header">
-            <th className="list-header__cell">{t.category}</th>
-            <th className="list-header__cell">{t.plan}</th>
-            <th className="list-header__cell">{t.fee}</th>
-            <th className="list-header__cell">{t.note}</th>
-            <th className="list-header__cell">{t.remain}</th>
-            <th className="list-header__cell" aria-label={t.actions} />
+            <th className="list-header__cell" scope="col">{t.billType}</th>
+            <th className="list-header__cell" scope="col">{t.plan}</th>
+            <th className="list-header__cell subscription-list__fee-header" scope="col">{t.fee}</th>
+            <th className="list-header__cell" scope="col">{t.note}</th>
+            <th className="list-header__cell" scope="col">{t.remain}</th>
+            <th className="list-header__cell" scope="col">{t.dueDate}</th>
+            <th className="list-header__cell subscription-list__actions-header" scope="col">{t.actions}</th>
           </tr>
         </thead>
         <tbody>
@@ -250,7 +260,6 @@ export const SubTable = memo(function SubTable({
               index={index}
               handlers={stableHandlers}
               t={t}
-              categoryLabels={dict.form.categoryOptions}
             />
           ))}
         </tbody>
