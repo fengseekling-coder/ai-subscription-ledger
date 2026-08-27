@@ -12,6 +12,7 @@ import {
   pendingRenewItems,
   pickDueDate,
   sortedBills,
+  syncInitialBillsFromRows,
   visibleRowEntries,
   type AppState,
   type BillDraft,
@@ -262,7 +263,8 @@ export default function App() {
     let cancelled = false;
 
     const migrate = async () => {
-      let next = state;
+      // 修复已加载旧账本中「订阅最终金额」与自动首笔账单金额不一致的情况。
+      let next = syncInitialBillsFromRows(state);
       const markOnly: string[] = [];
 
       for (const row of state.rows) {
