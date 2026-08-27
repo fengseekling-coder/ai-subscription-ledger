@@ -22,7 +22,7 @@ import {
   type BillDraft,
 } from "./actions.js";
 import { USD_CNY_RATE } from "./money.js";
-import { effectiveFee, isRecurringFee } from "./rules.js";
+import { effectiveFee, isActiveSubscription, isRecurringFee, isRowExpired } from "./rules.js";
 import { spendByCategory } from "./analytics.js";
 import { loadFromJson } from "./load.js";
 import { computeSummary } from "./stats.js";
@@ -49,6 +49,22 @@ function stateWith(rows: Partial<SubscriptionRow>[], bills: unknown[] = []): App
     bills,
   });
 }
+
+describe("空续费日期", () => {
+  it("表示无限期，即使旧数据残留 expired 标记也保持有效", () => {
+    const row = { ...stateWith([{ fee: "49" }]).rows[0], expired: true };
+
+    expect(isRowExpired(row, REF)).toBe(false);
+    expect(isActiveSubscription(row, REF)).toBe(true);
+  });
+
+  it("移除续费日期时清除过期标记", () => {
+    const s = stateWith([{ dueDate: "2026-07-01", expired: true }]);
+    const next = unwrap(updateRowField(s, 0, "dueDate", ""));
+
+    expect(next.rows[0]).toMatchObject({ dueDate: "", expired: false });
+  });
+});
 
 function unwrap<T>(r: T | { error: string }): T {
   if (r && typeof r === "object" && "error" in r) {
@@ -409,7 +425,8 @@ describe("updateRowField", () => {
     const off = unwrap(updateRowField(on, 0, "subscribed", "false"));
     expect(off.rows[0].subscribed).toBe(false);
 
-    const exp = unwrap(updateRowField(s, 0, "expired", "1"));
+    const expSource = stateWith([{ subscribed: true, dueDate: "2026-08-01" }]);
+    const exp = unwrap(updateRowField(expSource, 0, "expired", "1"));
     expect(exp.rows[0].expired).toBe(true);
   });
 
@@ -578,6 +595,11 @@ describe("markExpired / clearExpired", () => {
 
   it("leaves an unsubscribed row untouched", () => {
     const s = stateWith([{ subscribed: false }]);
+    expect(unwrap(markExpired(s, 0))).toBe(s);
+  });
+
+  it("does not mark an undated subscription expired", () => {
+    const s = stateWith([{ dueDate: "" }]);
     expect(unwrap(markExpired(s, 0))).toBe(s);
   });
 });

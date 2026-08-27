@@ -222,9 +222,9 @@ describe("normalizeRow", () => {
   });
 
   it("handles expired field as boolean", () => {
-    // Note: when subscribed is false or undefined, normalizeRow sets expired to false (line 32)
-    // So expired: true is only preserved when subscribed is explicitly true
-    expect(normalizeRow({ plan: "Test", subscribed: true, expired: true }).expired).toBe(true);
+    // A subscribed row with no due date is unlimited, so stale expired flags are cleared.
+    expect(normalizeRow({ plan: "Test", subscribed: true, dueDate: "2026-07-01", expired: true }).expired).toBe(true);
+    expect(normalizeRow({ plan: "Test", subscribed: true, dueDate: "", expired: true }).expired).toBe(false);
     expect(normalizeRow({ plan: "Test", subscribed: true, expired: false }).expired).toBe(false);
     expect(normalizeRow({ plan: "Test", expired: false }).expired).toBe(false);
     expect(normalizeRow({ plan: "Test", expired: undefined }).expired).toBe(false);

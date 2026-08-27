@@ -159,6 +159,7 @@ export function updateRowField(
     row = { ...rows[index], [key]: raw };
   }
   if (!row.subscribed) row.dueDate = "";
+  if (!row.dueDate) row.expired = false;
   rows[index] = row;
   const bills =
     key === "fee" || key === "actualFee" || key === "subscribedAt"
@@ -229,7 +230,7 @@ export function markExpired(state: AppState, index: number): AppState | { error:
   const g = guardIndex(state, index);
   if ("error" in g) return g;
   const rows = g.rows;
-  if (!rows[index].subscribed) return state;
+  if (!rows[index].subscribed || !rows[index].dueDate) return state;
   rows[index] = { ...rows[index], expired: true };
   return { ...state, rows };
 }

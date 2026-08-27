@@ -120,6 +120,8 @@ export function normalizeRow(row: RowInput): SubscriptionRow {
   if (r.billingModel === "额度包" || r.billingModel === "按量计费") {
     r.dueDate = "";
   }
+  // 空续费日期表示不限时间；兼容清理旧数据中残留的过期标记。
+  if (!r.dueDate) r.expired = false;
   if (!r.subscribed) {
     r.dueDate = "";
     r.subscribedAt = "";

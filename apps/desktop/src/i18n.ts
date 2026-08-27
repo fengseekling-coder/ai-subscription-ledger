@@ -143,6 +143,7 @@ export type Dict = {
     subscribe: string;
     edit: string;
     nonCycle: string;
+    unlimited: string;
     setDate: string;
     expired: string;
     restore: string;
@@ -415,6 +416,7 @@ const zh: Dict = {
     subscribe: "订阅",
     edit: "编辑",
     nonCycle: "非周期",
+    unlimited: "不限时间",
     setDate: "设置日期",
     expired: "已过期",
     restore: "恢复",
@@ -688,6 +690,7 @@ const en: Dict = {
     subscribe: "Subscribe",
     edit: "Edit",
     nonCycle: "One-off",
+    unlimited: "No time limit",
     setDate: "Set date",
     expired: "Expired",
     restore: "Restore",

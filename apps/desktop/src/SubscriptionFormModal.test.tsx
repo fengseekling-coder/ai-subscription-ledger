@@ -547,7 +547,9 @@ describe("新增与编辑的提交结果", () => {
   });
 
   it("编辑时保留原订阅状态，并提交计入预算选择", async () => {
-    const s = ledger([{ plan: "Claude Pro", subscribed: true, expired: true, includeInBudget: true }]);
+    const s = ledger([
+      { plan: "Claude Pro", subscribed: true, dueDate: "2026-08-01", expired: true, includeInBudget: true },
+    ]);
     const { onCommit } = setup({
       mode: "edit",
       state: s,

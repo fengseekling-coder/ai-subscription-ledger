@@ -5,6 +5,7 @@ import {
   effectiveFee,
   feeDisplayParts,
   isCreditLike,
+  isRowExpired,
   type AppState,
   type SubscriptionRow,
 } from "@ai-sub/core";
@@ -40,9 +41,6 @@ const SubTableRow = memo(function SubTableRow({
     onPickDue,
     onRenew,
     onMarkUnrenewed,
-    onMarkExpired,
-    onClearExpired,
-    onDelete,
   } = handlers;
 
   const dueDate = String(row.dueDate || "").trim();
@@ -73,9 +71,6 @@ const SubTableRow = memo(function SubTableRow({
   const handlePickDue = useCallback(() => onPickDue(index), [onPickDue, index]);
   const handleRenew = useCallback(() => onRenew(index), [onRenew, index]);
   const handleMarkUnrenewed = useCallback(() => onMarkUnrenewed(index), [onMarkUnrenewed, index]);
-  const handleMarkExpired = useCallback(() => onMarkExpired(index), [onMarkExpired, index]);
-  const handleClearExpired = useCallback(() => onClearExpired(index), [onClearExpired, index]);
-  const handleDelete = useCallback(() => onDelete(index), [onDelete, index]);
 
   const dueBadgeClass =
     due.cls === "overdue"
@@ -84,7 +79,7 @@ const SubTableRow = memo(function SubTableRow({
         ? "due-badge--warn"
         : "due-badge--ok";
 
-  const rowOpacity = row.expired
+  const rowOpacity = isRowExpired(row)
     ? "list-item--expired"
     : !row.subscribed
       ? "list-item--unsubscribed"
@@ -122,27 +117,13 @@ const SubTableRow = memo(function SubTableRow({
             >
               {t.subscribe}
             </button>
-          ) : row.expired && !dueDate ? (
-            <div className="due-actions">
-              <span className={`due-badge ${dueBadgeClass}`}>{t.expired}</span>
-              <div className="due-actions__btns">
-                <button type="button" className="btn btn--sm" onClick={handleClearExpired}>
-                  {t.restore}
-                </button>
-                <button type="button" className="btn btn--sm btn--danger" onClick={handleDelete}>
-                  {t.delete}
-                </button>
-              </div>
-            </div>
           ) : isCreditLike(row) ? (
             <span className="text-tertiary">{t.nonCycle}</span>
           ) : !dueDate ? (
             <div className="due-actions">
+              <span className="text-tertiary">{t.unlimited}</span>
               <button type="button" className="btn btn--sm btn--ghost" onClick={handlePickDue}>
                 {t.setDate}
-              </button>
-              <button type="button" className="btn btn--sm btn--ghost" onClick={handleMarkExpired}>
-                {t.expired}
               </button>
             </div>
           ) : (

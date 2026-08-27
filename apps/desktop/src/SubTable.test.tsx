@@ -184,6 +184,16 @@ describe("SubTable 续费日徽标", () => {
     expect(screen.getByText("Due today")).toBeInTheDocument();
   });
 
+  it("空白续费日期表示不限时间，不显示过期状态", () => {
+    const s = ledger([{ fee: "49", dueDate: "", expired: true }]);
+    render(<SubTable entries={visibleRowEntries(s, REF_DATE)} language="zh-CN" {...handlers()} />);
+
+    expect(screen.getByText("不限时间")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "设置日期" })).toBeInTheDocument();
+    expect(screen.queryByText("已过期")).not.toBeInTheDocument();
+    expect(document.querySelector("tbody tr")).not.toHaveClass("list-item--expired");
+  });
+
   it("额度类订阅显示为非周期，不显示剩余天数", () => {
     const s = ledger([
       {
