@@ -39,10 +39,11 @@ export function needsDueDate(row: SubscriptionRow, ref = new Date()): boolean {
 }
 
 export function isRowExpired(row: SubscriptionRow, ref = new Date()): boolean {
-  if (!row.subscribed) return false;
+  // 没有续费日期就是无限期，即使旧数据残留 expired 标记也不能算过期。
+  if (!row.subscribed || !row.dueDate) return false;
   if (row.expired) return true;
-  if (row.dueDate && daysUntil(row.dueDate, ref)! < 0) return true;
-  return false;
+  const days = daysUntil(row.dueDate, ref);
+  return days !== null && days < 0;
 }
 
 export function isActiveSubscription(row: SubscriptionRow, ref = new Date()): boolean {
