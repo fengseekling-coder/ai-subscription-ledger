@@ -129,6 +129,7 @@ export function normalizeRow(row: RowInput): SubscriptionRow {
 }
 
 export function normalizeBill(b: Partial<Bill>): Bill {
+  const source = b.source === "initial" ? "initial" : undefined;
   const originalCurrency = b.originalCurrency === "USD" || b.originalCurrency === "CNY"
     ? b.originalCurrency
     : undefined;
@@ -142,6 +143,7 @@ export function normalizeBill(b: Partial<Bill>): Bill {
     orderId: String(b.orderId || "").trim(),
     note: String(b.note || "").trim(),
     kind: b.kind === "renewal" ? "renewal" : "payment",
+    ...(source ? { source } : {}),
     ...(originalCurrency && Number.isFinite(originalAmount) && originalAmount >= 0
       ? { originalCurrency, originalAmount }
       : {}),

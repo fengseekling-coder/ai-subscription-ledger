@@ -19,6 +19,77 @@ function guardIndex(state: AppState, index: number): { rows: SubscriptionRow[] }
   return { rows: state.rows.slice() };
 }
 
+/**
+ * 订阅金额变更时，只回写自动创建的首笔账单。
+ *
+ * 新数据使用 source 精确标记；旧数据没有来源字段时，只接受唯一的
+ * payment 账单，并要求它的日期等于编辑前的 subscribedAt。这样不会把
+ * 续费账单或其他日期的手工账单一起改掉。
+ */
+function syncInitialBillAmount(
+  bills: Bill[],
+  previousRow: SubscriptionRow,
+  nextRow: SubscriptionRow
+): Bill[] {
+  if (previousRow.id !== nextRow.id) return bills;
+
+  const marked = bills.filter(
+    (bill) => bill.subscriptionId === previousRow.id && bill.source === "initial"
+  );
+  let initial = marked[0];
+  if (!initial) {
+    const subscribedAt = String(previousRow.subscribedAt || "").slice(0, 10);
+    if (!subscribedAt) return bills;
+    const legacy = bills.filter(
+      (bill) =>
+        !bill.source &&
+        bill.subscriptionId === previousRow.id &&
+        bill.kind === "payment" &&
+        bill.paidAt === subscribedAt
+    );
+    if (legacy.length !== 1) return bills;
+    initial = legacy[0];
+  }
+
+  const charge = effectiveFee(nextRow);
+  const isUsd = looksLikeUsdFee(charge);
+  const exchangeRate = Number(initial.exchangeRate);
+  const hasExchangeRate = Number.isFinite(exchangeRate) && exchangeRate > 0;
+  const updated = normalizeBill({
+    ...initial,
+    amount: feeToCnyAmount(charge, hasExchangeRate ? exchangeRate : undefined),
+    originalAmount: moneyValue(charge),
+    originalCurrency: isUsd ? "USD" : "CNY",
+    ...(isUsd && hasExchangeRate
+      ? {
+          exchangeRate,
+          exchangeRateDate: initial.exchangeRateDate,
+          exchangeRateSource: initial.exchangeRateSource,
+        }
+      : {
+          exchangeRate: undefined,
+          exchangeRateDate: undefined,
+          exchangeRateSource: undefined,
+        }),
+  });
+  return bills.map((bill) => (bill === initial ? updated : bill));
+}
+
+/**
+ * 启动时修复已有账本中与当前订阅金额不一致的首笔账单。
+ *
+ * 只复用首笔账单识别规则，不会重算手工支付或续费历史；没有可安全识别
+ * 的账单时返回原状态，供启动迁移安全地判定是否需要落盘。
+ */
+export function syncInitialBillsFromRows(state: AppState): AppState {
+  let bills = state.bills;
+  for (const row of state.rows) {
+    const nextBills = syncInitialBillAmount(bills, row, row);
+    if (nextBills !== bills) bills = nextBills;
+  }
+  return bills === state.bills ? state : { ...state, bills };
+}
+
 export function subById(state: AppState, id: string): SubscriptionRow | undefined {
   return state.rows.find((r) => r.id === id);
 }
@@ -77,6 +148,7 @@ export function updateRowField(
   if ("error" in g) return g;
   const raw = String(value).trim();
   const rows = g.rows;
+  const previousRow = rows[index];
   let row: SubscriptionRow;
   if (key === "subscribed" || key === "expired" || key === "includeInBudget") {
     // 布尔字段需转回 boolean，避免 UI 的 string 值把字段污染成字符串
@@ -88,15 +160,27 @@ export function updateRowField(
   }
   if (!row.subscribed) row.dueDate = "";
   rows[index] = row;
-  return { ...state, rows };
+  const bills =
+    key === "fee" || key === "actualFee" || key === "subscribedAt"
+      ? syncInitialBillAmount(state.bills, previousRow, row)
+      : state.bills;
+  return { ...state, rows, bills };
 }
 
 export function updateRow(state: AppState, index: number, patch: Partial<SubscriptionRow>): AppState | { error: string } {
   const g = guardIndex(state, index);
   if ("error" in g) return g;
   const rows = g.rows;
-  rows[index] = normalizeRow({ ...rows[index], ...patch });
-  return { ...state, rows };
+  const previousRow = rows[index];
+  const nextRow = normalizeRow({ ...previousRow, ...patch });
+  rows[index] = nextRow;
+  const shouldSync = ["fee", "actualFee", "subscribedAt"].some((key) =>
+    Object.prototype.hasOwnProperty.call(patch, key)
+  );
+  const bills = shouldSync
+    ? syncInitialBillAmount(state.bills, previousRow, nextRow)
+    : state.bills;
+  return { ...state, rows, bills };
 }
 
 export function toggleSubscribe(state: AppState, index: number, ref = new Date()): AppState | { error: string } {
@@ -326,8 +410,12 @@ export function addInitialBillWithDetails(
 ): AppState | { error: string } {
   const billed = addBillWithDetails(state, draft, ref);
   if ("error" in billed) return billed;
+  const newBillIndex = billed.bills.length - 1;
   return {
     ...billed,
+    bills: billed.bills.map((bill, index) =>
+      index === newBillIndex ? { ...bill, source: "initial" as const } : bill
+    ),
     rows: billed.rows.map((row) =>
       row.id === draft.subscriptionId ? { ...row, initialBillRecorded: true } : row
     ),

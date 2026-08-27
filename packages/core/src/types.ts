@@ -56,6 +56,8 @@ export interface Bill {
   orderId: string;
   note: string;
   kind: BillKind;
+  /** 账单来源；仅自动创建的订阅首笔账单带有该标记。 */
+  source?: "initial";
   /** 原始付款金额；金额栏 amount 始终保存换算后的人民币。 */
   originalAmount?: number;
   originalCurrency?: BillCurrency;

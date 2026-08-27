@@ -13,6 +13,7 @@ import {
   pickDueDate,
   renewRow,
   setBudget,
+  syncInitialBillsFromRows,
   subscribeNoticeAfterToggle,
   toggleSubscribe,
   updateBillDetails,
@@ -24,6 +25,7 @@ import { USD_CNY_RATE } from "./money.js";
 import { effectiveFee, isRecurringFee } from "./rules.js";
 import { spendByCategory } from "./analytics.js";
 import { loadFromJson } from "./load.js";
+import { computeSummary } from "./stats.js";
 import type { AppState, SubscriptionRow } from "./types.js";
 
 /** 所有用例的固定「今天」。core 的 action 全部接受 ref，测试不依赖真实时钟。 */
@@ -216,6 +218,7 @@ describe("addInitialBillWithDetails", () => {
 
     expect(next.rows[0].initialBillRecorded).toBe(true);
     expect(next.bills[0]).toMatchObject({
+      source: "initial",
       amount: 146.2,
       originalAmount: 20,
       originalCurrency: "USD",
@@ -600,6 +603,109 @@ describe("updateRow", () => {
   it("merges a patch through normalizeRow", () => {
     const s = stateWith([{ fee: "20" }]);
     expect(unwrap(updateRow(s, 0, { fee: "  US$30  " })).rows[0].fee).toBe("US$30");
+  });
+
+  it("syncs an automatic initial CNY bill and the monthly summary", () => {
+    const s = stateWith([{ fee: "149.42", subscribedAt: "2026-07-15" }]);
+    const withInitial = unwrap(
+      addInitialBillWithDetails(
+        s,
+        {
+          subscriptionId: "r1",
+          amount: "149.42",
+          paidAt: "2026-07-15",
+          orderId: "ORDER-1",
+          note: "订阅首笔",
+        },
+        REF
+      )
+    );
+    const next = unwrap(updateRow(withInitial, 0, { fee: "79.61" }));
+
+    expect(next.bills[0]).toMatchObject({
+      id: withInitial.bills[0].id,
+      source: "initial",
+      amount: 79.61,
+      paidAt: "2026-07-15",
+      orderId: "ORDER-1",
+      note: "订阅首笔",
+      kind: "payment",
+    });
+    expect(computeSummary(next, REF).monthSpend).toBe(79.61);
+  });
+
+  it("leaves manual and renewal bills unchanged", () => {
+    const s = stateWith(
+      [{ fee: "149.42", subscribedAt: "2026-07-15" }],
+      [
+        {
+          id: "manual",
+          subscriptionId: "r1",
+          amount: 20,
+          paidAt: "2026-07-20",
+          orderId: "MANUAL-1",
+          note: "手工账单",
+          kind: "payment",
+        },
+        {
+          id: "renewal",
+          subscriptionId: "r1",
+          amount: 30,
+          paidAt: "2026-07-15",
+          orderId: "RENEWAL-1",
+          note: "续费账单",
+          kind: "renewal",
+        },
+      ]
+    );
+    const next = unwrap(updateRow(s, 0, { fee: "79.61" }));
+
+    expect(next.bills).toMatchObject([
+      { id: "manual", amount: 20, note: "手工账单", kind: "payment" },
+      { id: "renewal", amount: 30, note: "续费账单", kind: "renewal" },
+    ]);
+  });
+
+  it("uses the unique legacy payment on subscribedAt when source is absent", () => {
+    const s = stateWith(
+      [{ fee: "149.42", subscribedAt: "2026-07-15" }],
+      [
+        {
+          id: "legacy-initial",
+          subscriptionId: "r1",
+          amount: 149.42,
+          paidAt: "2026-07-15",
+          orderId: "LEGACY-1",
+          note: "旧首笔",
+          kind: "payment",
+        },
+      ]
+    );
+    const next = unwrap(updateRowField(s, 0, "actualFee", "79.61"));
+
+    expect(next.bills[0]).toMatchObject({
+      id: "legacy-initial",
+      amount: 79.61,
+      originalAmount: 79.61,
+      originalCurrency: "CNY",
+      paidAt: "2026-07-15",
+      orderId: "LEGACY-1",
+      note: "旧首笔",
+      kind: "payment",
+    });
+    expect(next.bills[0].source).toBeUndefined();
+  });
+
+  it("repairs an already-loaded legacy initial bill on startup", () => {
+    const state = stateWith(
+      [{ fee: "79.61", subscribedAt: "2026-07-15" }],
+      [{ id: "legacy-initial", subscriptionId: "r1", amount: 149.42, paidAt: "2026-07-15", kind: "payment" }]
+    );
+
+    const repaired = syncInitialBillsFromRows(state);
+
+    expect(repaired.bills[0].amount).toBe(79.61);
+    expect(computeSummary(repaired, REF).monthSpend).toBe(79.61);
   });
 
   it("rejects an out-of-range index", () => {
